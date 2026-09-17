@@ -13,6 +13,8 @@
   const PROJECT_URL = 'https://ugvuwiaemrrtwplphkdn.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVndnV3aWFlbXJydHdwbHBoa2RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjMyNjIsImV4cCI6MjEwNTIzOTI2Mn0.Vb5eh4DZhVJe-7m9sgM4ztXKJRbOAXDRT5oeeUv8boY';
 
+  const Preferences = window.Capacitor?.Plugins?.Preferences;
+
   function getStored(key) {
     return sessionStorage.getItem(key) || localStorage.getItem(key) || null;
   }
@@ -21,9 +23,18 @@
     return localStorage.getItem('fasliRememberMe') === 'true';
   }
 
+  // ✅ (أمان/وظيفي حرج) Supabase بيجدّد الـrefresh token تلقائيًا في الخلفية كل ما التطبيق
+  // فاضل مفتوح — وتوكن الاسترجاع ده يُستخدم لمرة واحدة بس (يتجدد/يُلغى القديم في نفس اللحظة).
+  // كنا بنكتب النسخة الجديدة في localStorage بس، مش في Preferences/electronStore (التخزين
+  // الحقيقي اللي بيفضل موجود بعد Force Stop) — فلو المستخدم قفل التطبيق فعليًا بعد ما حصل
+  // تجديد خلفي واحد بس وفتحه تاني، login.html كان بيسترجع التوكن **القديم الملغي** من
+  // Preferences ويفشل يجدده، ويرجّع المستخدم لتسجيل الدخول من الأول رغم إن "تذكرني" شغّالة.
   function persist(key, value) {
     sessionStorage.setItem(key, value);
-    if (isRemembered()) localStorage.setItem(key, value);
+    if (!isRemembered()) return;
+    localStorage.setItem(key, value);
+    if (Preferences) Preferences.set({ key, value }).catch(() => {});
+    if (window.electronStore) window.electronStore.set(key, value).catch(() => {});
   }
 
   async function init() {
