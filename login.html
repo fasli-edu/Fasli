@@ -1056,11 +1056,18 @@
     // التحكم فورًا من غير ما ياخدوا فرصة يحددوا كلمة المرور الجديدة خالص
     if (customResetToken) return;
     // ✅ لو التطبيق (Capacitor) وعنده جلسة محفوظة في التخزين الحقيقي، نسترجعها الأول
+    // ✅ (أمان/وظيفي حرج) العلم ده بيتحدد من أي مصدر فعلاً أكّد "تذكرني" — على الموبايل/سطح
+    // المكتب المصدر الحقيقي هو Preferences/electronStore مش localStorage بالضرورة (ممكن يكون
+    // فاضي أو غير متزامن على native)، فأي كود لاحق محتاج يعرف "إحنا في جلسة متذكَّرة" لازم
+    // يستخدم العلم ده، مش يفحص localStorage.fasliRememberMe لوحده تاني (وده اللي كان بيخلي
+    // أي إصلاح/تحديث لاحق للتخزين يفشل يتحفظ فعليًا على الأجهزة اللي localStorage عندها فاضي)
+    let sessionIsRemembered = false;
     const Preferences = window.Capacitor?.Plugins?.Preferences;
     if (Preferences && !sessionStorage.getItem('jwtToken')) {
       try {
         const remembered = await Preferences.get({ key: 'fasliRememberMe' });
         if (remembered?.value === 'true') {
+          sessionIsRemembered = true;
           const { keys } = await Preferences.keys();
           for (const key of keys) {
             const { value } = await Preferences.get({ key });
@@ -1074,6 +1081,7 @@
       try {
         const remembered = await window.electronStore.get('fasliRememberMe');
         if (remembered === 'true') {
+          sessionIsRemembered = true;
           const keys = await window.electronStore.keys();
           for (const key of keys) {
             const value = await window.electronStore.get(key);
@@ -1084,12 +1092,14 @@
     }
     // ✅ نفس الفكرة لنسخة الموقع العادية (localStorage)
     if (!sessionStorage.getItem('jwtToken') && localStorage.getItem('fasliRememberMe') === 'true') {
+      sessionIsRemembered = true;
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key === 'fasliRememberMe') continue;
         sessionStorage.setItem(key, localStorage.getItem(key));
       }
     }
+    if (localStorage.getItem('fasliRememberMe') === 'true') sessionIsRemembered = true;
 
     // ✅ (أمان/وظيفي حرج) التوكن المسترجع (من أي مصدر فوق) بينتهي بعد ساعة تقريباً — قفل
     // التطبيق (خصوصاً الموبايل/سطح المكتب، اللي بيدخلوا الصفحة دي بالذات في كل مرة يتفتحوا فيها)
@@ -1104,11 +1114,10 @@
           refresh_token: sessionStorage.getItem('refreshToken'),
         });
         if (!error && data?.session) {
-          const isRemembered = localStorage.getItem('fasliRememberMe') === 'true';
           const persistRefreshed = async (key, value) => {
             value = String(value);
             sessionStorage.setItem(key, value);
-            if (!isRemembered) return;
+            if (!sessionIsRemembered) return;
             localStorage.setItem(key, value);
             if (Preferences) await Preferences.set({ key, value }).catch(() => {});
             if (window.electronStore) await window.electronStore.set(key, value).catch(() => {});
@@ -1151,11 +1160,10 @@
       // بيتفتح، التوكن نفسه سليم لكن الصفحة الهدف بترفضه وترجّعه لتسجيل الدخول تاني وتاني بلا نهاية.
       // الحل: نعيد كتابة القيم دي من التوكن نفسه هنا في كل مرة، عشان الاسترجاع يصلّح أي نقص قديم.
       if (clientId) {
-        const isRemembered = localStorage.getItem('fasliRememberMe') === 'true';
         const backfill = (key, value) => {
           value = String(value);
           sessionStorage.setItem(key, value);
-          if (!isRemembered) return;
+          if (!sessionIsRemembered) return;
           localStorage.setItem(key, value);
           if (Preferences) Preferences.set({ key, value }).catch(() => {});
           if (window.electronStore) window.electronStore.set(key, value).catch(() => {});
