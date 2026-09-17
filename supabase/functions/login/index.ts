@@ -41,26 +41,21 @@ export async function checkRateLimit(
   return { blocked: false };
 }
 
-/** يسجّل محاولة فاشلة، ويحظر المفتاح تلقائياً لو تخطى الحد الأقصى */
+/** يسجّل محاولة فاشلة، ويحظر المفتاح تلقائياً لو تخطى الحد الأقصى
+ * ✅ (أمان حرج) كان بيقرأ العدد الحالي (SELECT) وبعدين يكتب القيمة الجديدة (UPSERT) في نداءين
+ * منفصلين، مش عملية ذرية واحدة — طلبات متزامنة (هجوم بروت-فورس بيبعت عشرات المحاولات في نفس
+ * اللحظة) كل واحدة بتقرأ نفس العدد القديم قبل ما أي واحدة تكتب الجديد، فالحد الأقصى بيتخطّى
+ * بسهولة تحت التوازي. دلوقتي بيستخدم دالة SQL واحدة ذرّية بالكامل (INSERT ... ON CONFLICT) —
+ * Postgres بيقفل الصف نفسه أثناء المعاملات المتزامنة على نفس المفتاح، فمفيش سباق ممكن يحصل. */
 export async function registerFailedAttempt(key: string, opts: RateLimitOptions = {}) {
   const maxAttempts = opts.maxAttempts ?? 5;
   const lockMinutes = opts.lockMinutes ?? 15;
 
   const supabase = adminClient();
-  const { data } = await supabase
-    .from("login_attempts")
-    .select("attempts")
-    .eq("username", key)
-    .maybeSingle();
-
-  const attempts = (data?.attempts || 0) + 1;
-  const lockedUntil = attempts >= maxAttempts ? new Date(Date.now() + lockMinutes * 60 * 1000).toISOString() : null;
-
-  await supabase.from("login_attempts").upsert({
-    username: key,
-    attempts,
-    locked_until: lockedUntil,
-    last_attempt: new Date().toISOString(),
+  await supabase.rpc("register_login_attempt", {
+    p_username: key,
+    p_max_attempts: maxAttempts,
+    p_lock_minutes: lockMinutes,
   });
 }
 
