@@ -8,7 +8,7 @@ import { verifyToken } from "../_shared/auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://fasli-eg.github.io",
+  "Access-Control-Allow-Origin": "https://fasli-edu.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   // ✅ (طلب) x-cron-secret مضافة عشان استدعاء الجدولة الدورية (pg_cron) اللي بيغطي كل
   // المدرسين مرة واحدة، بدل الاعتماد بس على فتح لوحة تحكم مدرس بعينه

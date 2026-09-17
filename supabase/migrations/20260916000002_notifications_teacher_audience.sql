@@ -7,6 +7,12 @@
 -- عن type.
 -- ============================================
 
+-- ✅ العمود ده كان مضاف مباشرة على قاعدة بيانات الإنتاج من غير أي migration موثّقة له
+-- (انحراف مخطط — نفس فئة activity_logs_client_id_fkey المكتشفة في نفس الجلسة). بنوثّقه
+-- هنا رسميًا (بنفس شكل العمود المطابق في activity_logs) قبل استخدامه تحت في الـconstraint —
+-- IF NOT EXISTS يخليها no-op آمنة تمامًا على أي قاعدة بيانات موجود فيها العمود بالفعل.
+alter table notifications add column if not exists assistant_id bigint references assistants (id) on delete set null;
+
 alter table notifications drop constraint if exists notifications_recipient_check;
 
 alter table notifications add constraint notifications_recipient_check check (

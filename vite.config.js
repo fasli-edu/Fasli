@@ -13,7 +13,7 @@ import { resolve } from "path";
 export default {
   root: "frontend",
   publicDir: ".",
-  base: "/Fasli/", // ✅ الموقع بيتنشر على fasli-eg.github.io/Fasli (مش الجذر)، لازم كل مسارات الأصول تحسب المسار الفرعي ده
+  base: "/Fasli/", // ✅ الموقع بيتنشر على fasli-edu.github.io/Fasli (مش الجذر)، لازم كل مسارات الأصول تحسب المسار الفرعي ده
   build: {
     outDir: "../dist",
     emptyOutDir: true,

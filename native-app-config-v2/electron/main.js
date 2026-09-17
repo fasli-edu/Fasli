@@ -24,7 +24,7 @@ function createWindow() {
   });
 
   // ✅ مهم: غيّر الرابط ده لموقعك المنشور فعلياً (لازم HTTPS)
-  win.loadURL('https://fasli-eg.github.io/Fasli/login.html');
+  win.loadURL('https://fasli-edu.github.io/Fasli/login.html');
 
   // ✅ إجراء وقائي: نتأكد إن النافذة بتاخد التركيز فعلياً بعد أي تنقل بين الصفحات
   // (زي تسجيل الخروج)، عشان نتفادى أي حالة "تجمّد" ظاهرية في الحقول لو حصلت

@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     });
     if (insertError) return jsonResponse({ success: false, message: "⚠️ حدث خطأ غير متوقع، حاول مرة أخرى" }, 500);
 
-    const resetLink = `https://fasli-eg.github.io/Fasli/login.html?resetToken=${rawToken}`;
+    const resetLink = `https://fasli-edu.github.io/Fasli/login.html?resetToken=${rawToken}`;
     const greeting = row.name ? `مرحباً ${row.name}،` : "مرحباً،";
     // ✅ الرابط لازم يظهر كنص واضح في نسخة الـplain-text مش بس جوه زرار HTML — أي عميل
     // إيميل بيعرض النسخة النصية العادية (أو ما بيعرفش يرندر الـHTML) يفضل شايف الرابط كامل

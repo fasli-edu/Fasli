@@ -5,7 +5,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
 
 // نفس رابط المشروع المستخدم في كل صفحات الفرونت إند (مفيش استيراد مشترك بين الملفات في المشروع ده)
-const PROJECT_URL = 'https://yxkyxxzcnxpxefodfxnl.supabase.co';
+const PROJECT_URL = 'https://ugvuwiaemrrtwplphkdn.supabase.co';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));

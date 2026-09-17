@@ -12,9 +12,9 @@ export {
 /** اسم "الجهة المعتمِدة" (Relying Party) اللي بيتعرض للمستخدم وقت تسجيل البصمة */
 export const RP_NAME = "فَصلي";
 /** هوية الجهة المعتمِدة — لازم يطابق الدومين اللي الموقع شغال عليه بالظبط (من غير مسار) */
-export const RP_ID = "fasli-eg.github.io";
+export const RP_ID = "fasli-edu.github.io";
 /** الأصل (origin) اللي المفروض الطلبات توصل منه — يُستخدم في التحقق من كل رد بصمة */
-export const ORIGIN = "https://fasli-eg.github.io";
+export const ORIGIN = "https://fasli-edu.github.io";
 
 /** يحوّل Uint8Array لنص base64url عشان نخزّنه في عمود text */
 export function bufferToBase64url(buf: Uint8Array): string {

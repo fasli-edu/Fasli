@@ -10,7 +10,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://fasli-eg.github.io",
+  "Access-Control-Allow-Origin": "https://fasli-edu.github.io",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info",
   "Access-Control-Max-Age": "86400",

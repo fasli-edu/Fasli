@@ -6,7 +6,7 @@
 //    من غير حدود — "لاحقاً" في البانر بيأجّل الاقتراح بس، مش بديل عن صفحة الإعدادات.
 // ============================================
 (function () {
-  const PROJECT_URL = 'https://yxkyxxzcnxpxefodfxnl.supabase.co';
+  const PROJECT_URL = 'https://ugvuwiaemrrtwplphkdn.supabase.co';
   const DISMISS_KEY = 'webauthnDismissed';
 
   function getStored(key) {

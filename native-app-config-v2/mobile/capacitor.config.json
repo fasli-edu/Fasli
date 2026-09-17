@@ -3,7 +3,7 @@
   "appName": "فَصلي",
   "webDir": "www",
   "server": {
-    "url": "https://fasli-eg.github.io/Fasli/login.html",
+    "url": "https://fasli-edu.github.io/Fasli/login.html",
     "cleartext": false
   },
   "backgroundColor": "#0B1C33",

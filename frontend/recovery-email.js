@@ -6,7 +6,7 @@
 // webauthn.js بالظبط: window.FasliRecoveryEmail = { renderManager, openManagerModal }
 // ============================================
 (function () {
-  const PROJECT_URL = 'https://yxkyxxzcnxpxefodfxnl.supabase.co';
+  const PROJECT_URL = 'https://ugvuwiaemrrtwplphkdn.supabase.co';
 
   function getStored(key) {
     return sessionStorage.getItem(key) || localStorage.getItem(key) || null;
