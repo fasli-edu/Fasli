@@ -16,6 +16,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # ✅ نفس اسم الـgroup هنا وفي build-desktop.yml (والاتنين matrix legs بتاعته) عمدًا — كلهم
+    # بيرفعوا لنفس الـRelease (نفس التاج) لما يتدفع تاج، ولو اشتغلوا في نفس اللحظة بيتعارضوا
+    # على إنشاء/تحديث الـRelease نفسه ويفشل واحد بالغلط. concurrency على مستوى الـjob (مش
+    # الـworkflow) هو اللي فعليًا بيسلسلهم واحد بعد التاني بدل بالتوازي.
+    concurrency:
+      group: release-${{ github.ref }}
 
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +91,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload as build artifact (دايماً، حتى لو تشغيل يدوي للتجربة)
+      - name: Upload as build artifact (دايماً، حتى لو تشغيل يدوي للتجربة أو فشلت خطوة الـRelease)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: fasli-android-apk

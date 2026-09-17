@@ -19,6 +19,11 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    # ✅ نفس اسم الـgroup في build-android.yml عمدًا، وده كمان بيسلسل الاتنين matrix legs
+    # (windows/macos) هنا مع بعض — التلاتة بيرفعوا لنفس الـRelease (نفس التاج) لو اشتغلوا في
+    # نفس اللحظة بيتعارضوا على إنشاء/تحديث الـRelease نفسه ويفشل واحد بالغلط.
+    concurrency:
+      group: release-${{ github.ref }}
 
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +50,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload as build artifact (دايماً، حتى لو تشغيل يدوي للتجربة)
+      - name: Upload as build artifact (دايماً، حتى لو تشغيل يدوي للتجربة أو فشلت خطوة الـRelease)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: fasli-desktop-${{ matrix.os }}
