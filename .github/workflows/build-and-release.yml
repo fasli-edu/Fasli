@@ -1,0 +1,143 @@
+# .github/workflows/build-and-release.yml
+# بناء تلقائي مجاني لتطبيقات أندرويد/ويندوز/ماك + نشرهم كـ Release واحد على GitHub
+# مثال: git tag v1.0.0 && git push origin v1.0.0
+#
+# ✅ ورشة الأندرويد والديسكتوب كانوا workflow منفصلين، كل واحد بيحاول يرفع لنفس الـRelease
+# (نفس التاج) لوحده — وده كان بيسبب تعارض حقيقي لما التلاتة (أندرويد + ويندوز + ماك) يشتغلوا
+# في نفس اللحظة على نفس التاج. جرّبنا concurrency lock كحل، لكن GitHub بيلغي (cancel) أي job
+# تاني قاعد في الطابور لما job تالت يوصل لنفس الـgroup بدل ما يستنى الكل — يعني حل الـlock
+# ده كان بيلغي واحد من التلاتة بدل ما يخليهم يستنوا. الحل الصحيح: كل بناء يرفع ناتجه كـ
+# build artifact بس (مفيش أي حد بيلمس الـRelease مباشرة)، وjob أخيرة واحدة (needs: كل
+# البناءات التلاتة) هي بس اللي بتجمعهم وتعمل Release واحد بكل الملفات مرة واحدة.
+
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:   # 👈 ده اللي بيظهّر زرار "Run workflow" اليدوي في GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        working-directory: ./native-app-config-v2/mobile
+        run: npm install
+
+      - name: Add Android platform
+        working-directory: ./native-app-config-v2/mobile
+        run: npx cap add android
+
+      - name: Add Firebase (google-services.json) for Push Notifications
+        working-directory: ./native-app-config-v2/mobile
+        run: |
+          if [ -f "google-services.json" ]; then
+            cp google-services.json android/app/google-services.json
+            # نضيف classpath خدمات جوجل لملف build.gradle على مستوى المشروع لو مش موجود بالفعل
+            if ! grep -q "com.google.gms:google-services" android/build.gradle; then
+              sed -i "/classpath 'com.android.tools.build:gradle/a\\        classpath 'com.google.gms:google-services:4.4.2'" android/build.gradle
+            fi
+            # نفعّل الـ plugin على مستوى التطبيق نفسه لو مش مفعّل بالفعل
+            if ! grep -q "com.google.gms.google-services" android/app/build.gradle; then
+              echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+            fi
+            echo "✅ تم ربط Firebase بمشروع الأندرويد"
+          else
+            echo "⚠️ ملف mobile/google-services.json مش موجود - الإشعارات مش هتشتغل في النسخة دي"
+          fi
+
+      - name: Generate app icons (لوجو فَصلي بدل الأيقونة الافتراضية)
+        working-directory: ./native-app-config-v2/mobile
+        run: npx @capacitor/assets generate --android
+
+      - name: Sync Capacitor
+        working-directory: ./native-app-config-v2/mobile
+        run: npx cap sync android
+
+      - name: Use fixed debug keystore (بديل عن مفتاح عشوائي مختلف في كل تشغيل)
+        # ✅ لازم بصمة توقيع ثابتة للتطبيق عشان تسجيل الدخول بالبصمة (Digital Asset Links)
+        # يشتغل — لو المفتاح بيتغيّر كل مرة، أي إعداد assetlinks.json بيبقى غير صالح فورًا
+        run: |
+          mkdir -p ~/.android
+          cp native-app-config-v2/mobile/keystore/debug.keystore ~/.android/debug.keystore
+
+      - name: Rename APK for clarity
+        working-directory: ./native-app-config-v2/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/فصلي.apk
+
+      - name: Upload as build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset-android
+          path: native-app-config-v2/mobile/android/app/build/outputs/apk/debug/فصلي.apk
+
+  build-desktop:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: ./native-app-config-v2/electron
+        run: npm install
+
+      - name: Build
+        working-directory: ./native-app-config-v2/electron
+        run: npx electron-builder --publish never
+
+      - name: Upload as build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset-desktop-${{ matrix.os }}
+          path: |
+            native-app-config-v2/electron/dist/*.exe
+            native-app-config-v2/electron/dist/*.dmg
+
+  create-release:
+    # ✅ لازم تستنى التلاتة (needs) وتشتغل حتى لو واحد فيهم فشل (always()) — عشان ننشر
+    # اللي نجح فعلاً بدل ما نضيّعه كله بسبب فشل جزء واحد. لو التلاتة فشلوا، مفيش ملفات
+    # للرفع أصلاً وsoftprops/action-gh-release هتعمل Release فاضي، وده مقبول كعرض واضح
+    # للمشكلة بدل فشل صامت.
+    needs: [build-android, build-desktop]
+    if: always() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: release-asset-*
+
+      - name: Upload to GitHub Release (رابط ثابت دايماً)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
