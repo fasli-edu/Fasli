@@ -720,6 +720,7 @@
       const panel = document.getElementById('notifPanel');
       const btn = document.getElementById('notifBtn') || document.querySelector('.notif-wrap');
       if (!panel || !btn) return;
+      if (panel.parentElement !== document.body) document.body.appendChild(panel);
       const btnRect = btn.getBoundingClientRect();
       const margin = 12;
       const panelWidth = Math.min(340, window.innerWidth - margin * 2);
@@ -735,8 +736,9 @@
 
     document.addEventListener('click', function(e) {
       const wrap = document.querySelector('.notif-wrap');
-      if (wrap && !wrap.contains(e.target)) {
-        document.getElementById('notifPanel').classList.remove('open');
+      const panel = document.getElementById('notifPanel');
+      if (wrap && !wrap.contains(e.target) && !(panel && panel.contains(e.target))) {
+        panel.classList.remove('open');
       }
     });
 
