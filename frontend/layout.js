@@ -118,6 +118,25 @@
         }
       });
     }
+
+    /* ✅ (طلب) تدوير الموبايل من عرضي لطولي وبالعكس كان بيسيب حالة السايدبار/الستارة الخلفية
+       عالقة من الوضع القديم — toggleSidebar() بيقرر يضيف كلاس open (موبايل) أو collapsed
+       (ديسكتوب) بناءً على عرض الشاشة **وقت الضغطة نفسها بس**، فلو اتضغط في وضع وبعدين
+       اتدار الجهاز لوضع مختلف يعدّي حد الـ900px، الكلاس القديم بيفضل حاطط (خصوصاً الستارة
+       الخلفية sidebar-backdrop اللي شغالة بغض النظر عن حجم الشاشة) وبيبوّظ الشكل. بنعيد
+       ضبط الحالة تلقائيًا كل ما حجم الشاشة يتغيّر (بما فيه التدوير) عشان تفضل متسقة مع
+       العرض الحالي دايماً. */
+    window.addEventListener('resize', function () {
+      var sb = document.getElementById('sidebar');
+      var backdrop = document.getElementById('sidebarBackdrop');
+      if (!sb) return;
+      if (window.innerWidth > 900) {
+        sb.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('open');
+      } else {
+        sb.classList.remove('collapsed');
+      }
+    });
   };
 
 })();
