@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, AuthError, verifyToken, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, AuthError, verifyToken, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 import { updateAuthUserPassword } from "../_shared/authProvision.ts";
 
 // ============================================
@@ -179,7 +179,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          message: `فشل تحديث كلمة المرور: ${updateError.message}`
+          message: `فشل تحديث كلمة المرور: ${safeErrorMessage(updateError)}`
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, TokenPayload, AuthError, verifyToken, ownerClientId, requireOwnClientId, requireAdmin, requireParentPhone, requireTeacherPlanPermission, requireAssistantPermission, verifyDeviceSecret, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, TokenPayload, AuthError, verifyToken, ownerClientId, requireOwnClientId, requireAdmin, requireParentPhone, requireTeacherPlanPermission, requireAssistantPermission, verifyDeviceSecret, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 
 // ============================================
 // (من _shared/push.ts — مدموج مباشرة لأن Dashboard لا يدعم الاستيراد بين الدوال)
@@ -511,7 +511,7 @@ serve(async (req) => {
       : existingQuery.is("session_id", null);
     const { data: existing, error: existError } = await existingQuery.maybeSingle();
 
-    if (existError) throw new Error(`فشل التحقق من الحضور: ${existError.message}`);
+    if (existError) throw new Error(`فشل التحقق من الحضور: ${safeErrorMessage(existError)}`);
 
     if (existing) {
       return new Response(
@@ -566,7 +566,7 @@ serve(async (req) => {
       .select()
       .single();
 
-    if (attError) throw new Error(`فشل تسجيل الحضور: ${attError.message}`);
+    if (attError) throw new Error(`فشل تسجيل الحضور: ${safeErrorMessage(attError)}`);
 
     // ✅ نجيب اسم المدرس عشان يبقى واضح لولي الأمر مين اللي بعت الإشعار (مهم لو عنده أكتر من ابن عند مدرسين مختلفين)
     // ✅ (مراجعة أداء) الاستعلام ده كان بيتكرر تاني بالظبط تحت (في تحديد performerName) — دلوقتي

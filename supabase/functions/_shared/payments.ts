@@ -1,4 +1,5 @@
 // supabase/functions/_shared/payments.ts
+import { safeErrorMessage } from "./auth.ts";
 // ✅ منطق "تسجيل دفعة فعليًا في payments" المشترك بين manage-payment (تسجيل يدوي مباشر)
 // و manage-payment-receipt (تأكيد إيصال مرفوع من ولي الأمر) — نفس السلوك بالظبط في الحالتين:
 // نفس الإدراج في payments، نفس upsert لـ payment_titles، نفس الإشعارات والـpush. استُخرج
@@ -195,7 +196,7 @@ export async function updatePaymentAmount(
   const { data: updatedPayment, error: updateError } = await supabase.from("payments").update({ amount: newAmount }).eq("id", paymentId).select().single();
   if (updateError) {
     console.error("❌ فشل تحديث الدفعة:", updateError);
-    return { success: false, message: `فشل تحديث الدفعة: ${updateError.message}`, status: 500 };
+    return { success: false, message: `فشل تحديث الدفعة: ${safeErrorMessage(updateError)}`, status: 500 };
   }
 
   let teacherName = "مدرس";

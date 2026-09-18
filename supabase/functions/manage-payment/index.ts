@@ -2,7 +2,7 @@
 // ✅ دالة موحّدة تجمع add-payment + update-payment + delete-payment بـ "action" parameter
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 import { recordPayments, updatePaymentAmount } from "../_shared/payments.ts";
 
 interface ServiceAccount { client_email: string; private_key: string; project_id: string; }
@@ -158,7 +158,7 @@ async function handleDelete(supabase: any, payload: TokenPayload, body: any) {
   const { error: deleteError } = await supabase.from("payments").delete().eq("id", paymentId);
   if (deleteError) {
     console.error("❌ فشل حذف الدفعة:", deleteError);
-    return new Response(JSON.stringify({ success: false, message: `فشل حذف الدفعة: ${deleteError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل حذف الدفعة: ${safeErrorMessage(deleteError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 

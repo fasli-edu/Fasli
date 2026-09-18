@@ -9,7 +9,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ✅ (هجرة Supabase Auth، تصحيح 1.4) الملف ده كان بيعمل تحقق JWT مكرر بمنطقه الخاص بدل ما
 // يستورد من _shared/auth.ts زي كل الفانكشنز التانية — بقى موحّد دلوقتي زي الباقي
-import { corsHeaders, TokenPayload, AuthError, verifyToken, authErrorResponse, requireTeacherPlanPermission, requireAssistantPermission } from "../_shared/auth.ts";
+import { corsHeaders, TokenPayload, AuthError, verifyToken, authErrorResponse, requireTeacherPlanPermission, requireAssistantPermission, safeErrorMessage } from "../_shared/auth.ts";
 import { provisionAuthUser, deleteAuthUser, updateAuthUserContact, syntheticEmailFor } from "../_shared/authProvision.ts";
 
 // ✅ (طلب) لو المجموعة وصلت للحد الأقصى لعدد الطلاب (max_students)، لازم نرفض أي عملية إضافة
@@ -125,7 +125,7 @@ async function handleAdd(req: Request, supabase: any, payload: TokenPayload, bod
       .from("parents").insert({ phone: parentPhone, name: parentName, auth_user_id: newParentAuthUserId, must_change_password: true, is_active: true });
     if (insertParentError) {
       await deleteAuthUser(newParentAuthUserId);
-      return new Response(JSON.stringify({ success: false, message: `فشل إنشاء ولي الأمر: ${insertParentError.message}` }),
+      return new Response(JSON.stringify({ success: false, message: `فشل إنشاء ولي الأمر: ${safeErrorMessage(insertParentError)}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   }
@@ -138,7 +138,7 @@ async function handleAdd(req: Request, supabase: any, payload: TokenPayload, bod
       await deleteAuthUser(newParentAuthUserId);
       await supabase.from("parents").delete().eq("phone", parentPhone);
     }
-    throw new Error(`فشل إضافة الطالب: ${insertError.message}`);
+    throw new Error(`فشل إضافة الطالب: ${safeErrorMessage(insertError)}`);
   }
 
   const { data: matchingCard } = await supabase
@@ -254,7 +254,7 @@ async function handleUpdate(supabase: any, payload: TokenPayload, body: any) {
       if (insertParentError) {
         console.error("❌ فشل إنشاء/تجهيز حساب ولي الأمر الجديد:", insertParentError);
         if (!reuseAuthUserId) await deleteAuthUser(newParentAuthUserId);
-        return new Response(JSON.stringify({ success: false, message: `فشل تحديث رقم ولي الأمر: ${insertParentError.message}` }),
+        return new Response(JSON.stringify({ success: false, message: `فشل تحديث رقم ولي الأمر: ${safeErrorMessage(insertParentError)}` }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
@@ -263,7 +263,7 @@ async function handleUpdate(supabase: any, payload: TokenPayload, body: any) {
   const { data: updatedStudent, error: updateError } = await supabase.from("students").update(updates).eq("id", studentId).select().single();
   if (updateError) {
     console.error("❌ خطأ في تحديث الطالب:", updateError);
-    return new Response(JSON.stringify({ success: false, message: `فشل تحديث الطالب: ${updateError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل تحديث الطالب: ${safeErrorMessage(updateError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -331,7 +331,7 @@ async function handleDelete(supabase: any, payload: TokenPayload, body: any) {
   }
 
   const { error: deleteError } = await supabase.from("students").delete().eq("id", studentId);
-  if (deleteError) throw new Error(`فشل حذف الطالب: ${deleteError.message}`);
+  if (deleteError) throw new Error(`فشل حذف الطالب: ${safeErrorMessage(deleteError)}`);
   await deleteAuthUser(student.auth_user_id);
 
   // ✅ إعادة عدّ فعلية بدل زيادة/نقصان تراكمي — بتفضل صحيحة حتى لو الطالب كان مؤرشف بالفعل

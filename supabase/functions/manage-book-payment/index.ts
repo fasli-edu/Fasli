@@ -2,7 +2,7 @@
 // ✅ دالة موحّدة تجمع pay-book + update-book-payment + delete-book-payment بـ "action" parameter
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 
 interface ServiceAccount { client_email: string; private_key: string; project_id: string; }
 let cachedAccessToken: { token: string; expiresAt: number } | null = null;
@@ -214,7 +214,7 @@ async function handleUpdate(supabase: any, payload: TokenPayload, body: any) {
 
   const { data: updatedPayment, error: updateError } = await supabase.from("book_payments").update({ amount: newAmount }).eq("id", paymentId).select().single();
   if (updateError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل تحديث الدفعة: ${updateError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل تحديث الدفعة: ${safeErrorMessage(updateError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -290,7 +290,7 @@ async function handleDelete(supabase: any, payload: TokenPayload, body: any) {
 
   const { error: deleteError } = await supabase.from("book_payments").delete().eq("id", paymentId);
   if (deleteError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل حذف الدفعة: ${deleteError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل حذف الدفعة: ${safeErrorMessage(deleteError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 

@@ -247,6 +247,16 @@ export async function verifyDeviceSecret(clientId: string, deviceSecret: string)
   }
 }
 
+/** يحوّل رسالة خطأ من طبقة قاعدة البيانات لرسالة آمنة تُعرض للمستخدم مباشرة. من غيرها، لو
+ * الطلب اتمنع من طبقة بينية قبل ما يوصل Supabase أصلاً (زي WAF بيرفض شكل الطلب)، الرد بيرجع
+ * صفحة HTML كاملة بدل خطأ Postgres قصير عادي، ورسالة الخطأ في الـresponse كانت بتعرض الصفحة
+ * دي كاملة للمستخدم — تسريب تفاصيل بنية تحتية داخلية من غير أي فايدة له. */
+export function safeErrorMessage(error: { message?: string } | null | undefined, fallback = "⚠️ حدث خطأ غير متوقع، حاول مرة أخرى"): string {
+  const msg = error?.message;
+  if (!msg || msg.length > 300 || /<!DOCTYPE|<html/i.test(msg)) return fallback;
+  return msg;
+}
+
 /** يحوّل AuthError لـ Response جاهزة */
 export function authErrorResponse(error: unknown) {
   const status = error instanceof AuthError ? error.status : 500;

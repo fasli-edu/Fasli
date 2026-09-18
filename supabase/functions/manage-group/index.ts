@@ -2,7 +2,7 @@
 // ✅ دالة موحّدة تجمع create-group + rename-group + delete-group بـ "action" parameter
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 
 // ✅ (طلب) لو المجموعة وصلت للحد الأقصى لعدد الطلاب (max_students)، لازم نرفض أي عملية إضافة
 // أو ربط جديدة ليها. العدد الحالي = الطلاب اللي المجموعة دي مجموعتهم الأساسية (students.group_name)
@@ -43,7 +43,7 @@ async function handleCreate(supabase: any, payload: TokenPayload, body: any) {
 
   const { data: existingGroup, error: checkError } = await supabase.from("groups").select("id").eq("teacher_id", clientId).eq("name", groupName).maybeSingle();
   if (checkError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل التحقق من المجموعة: ${checkError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل التحقق من المجموعة: ${safeErrorMessage(checkError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
   if (existingGroup) {
@@ -74,7 +74,7 @@ async function handleCreate(supabase: any, payload: TokenPayload, body: any) {
   }
   const { data: newGroup, error: insertError } = await supabase.from("groups").insert({ teacher_id: clientId, name: groupName, max_students: normalizedMax, instructor_name_id: normalizedInstructorId, level_id: normalizedLevelId }).select().single();
   if (insertError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل إنشاء المجموعة: ${insertError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل إنشاء المجموعة: ${safeErrorMessage(insertError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -158,14 +158,14 @@ async function handleDelete(supabase: any, payload: TokenPayload, body: any) {
 
   const { data: students, error: fetchStudentsError } = await supabase.from("students").select("name, uid, parent_phone").eq("teacher_id", clientId).eq("group_name", groupName);
   if (fetchStudentsError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل جلب الطلاب: ${fetchStudentsError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل جلب الطلاب: ${safeErrorMessage(fetchStudentsError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   if (students && students.length > 0) {
     const { error: deleteStudentsError } = await supabase.from("students").delete().eq("teacher_id", clientId).eq("group_name", groupName);
     if (deleteStudentsError) {
-      return new Response(JSON.stringify({ success: false, message: `فشل حذف الطلاب: ${deleteStudentsError.message}` }),
+      return new Response(JSON.stringify({ success: false, message: `فشل حذف الطلاب: ${safeErrorMessage(deleteStudentsError)}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -230,13 +230,13 @@ async function handleSetCapacity(supabase: any, payload: TokenPayload, body: any
   if (existingGroup) {
     const { error: updateError } = await supabase.from("groups").update({ max_students: normalizedMax }).eq("id", existingGroup.id);
     if (updateError) {
-      return new Response(JSON.stringify({ success: false, message: `فشل تحديث الحد الأقصى: ${updateError.message}` }),
+      return new Response(JSON.stringify({ success: false, message: `فشل تحديث الحد الأقصى: ${safeErrorMessage(updateError)}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } else {
     const { error: insertError } = await supabase.from("groups").insert({ teacher_id: clientId, name: groupName, max_students: normalizedMax });
     if (insertError) {
-      return new Response(JSON.stringify({ success: false, message: `فشل حفظ الحد الأقصى: ${insertError.message}` }),
+      return new Response(JSON.stringify({ success: false, message: `فشل حفظ الحد الأقصى: ${safeErrorMessage(insertError)}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   }
@@ -255,13 +255,13 @@ async function handleListDetailed(supabase: any, payload: TokenPayload, body: an
 
   const { data: groupRows, error: groupsError } = await supabase.from("groups").select("id, name, max_students, instructor_name_id, level_id").eq("teacher_id", tokenClientId);
   if (groupsError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل جلب المجموعات: ${groupsError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل جلب المجموعات: ${safeErrorMessage(groupsError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const { data: students, error: studentsError } = await supabase.from("students").select("group_name").eq("teacher_id", tokenClientId).not("group_name", "is", null);
   if (studentsError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل جلب الطلاب: ${studentsError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل جلب الطلاب: ${safeErrorMessage(studentsError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -271,7 +271,7 @@ async function handleListDetailed(supabase: any, payload: TokenPayload, body: an
   const { data: groupLinks, error: groupLinksError } = await supabase
     .from("student_group_links").select("group_name").eq("teacher_id", tokenClientId);
   if (groupLinksError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل جلب روابط المجموعات: ${groupLinksError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل جلب روابط المجموعات: ${safeErrorMessage(groupLinksError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 

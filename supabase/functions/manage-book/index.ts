@@ -2,7 +2,7 @@
 // ✅ دالة موحّدة تجمع add-book + update-book + delete-book بـ "action" parameter
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, TokenPayload, AuthError, verifyToken, requireTeacherPlanPermission, requireAssistantPermission, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 
 async function getPerformerName(supabase: any, assistantId: any, assistantName: any, teacherId: string) {
   if (assistantId) return assistantName || "مساعد";
@@ -27,7 +27,7 @@ async function handleAdd(supabase: any, payload: TokenPayload, body: any) {
 
   const { data: book, error: insertError } = await supabase.from("books").insert({ teacher_id: teacherId, name, price: Number(price) }).select().single();
   if (insertError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل إضافة المذكرة: ${insertError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل إضافة المذكرة: ${safeErrorMessage(insertError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -69,7 +69,7 @@ async function handleUpdate(supabase: any, payload: TokenPayload, body: any) {
 
   const { data: updatedBook, error: updateError } = await supabase.from("books").update({ name, price: Number(price) }).eq("id", bookId).select().single();
   if (updateError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل تحديث المذكرة: ${updateError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل تحديث المذكرة: ${safeErrorMessage(updateError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -114,7 +114,7 @@ async function handleDelete(supabase: any, payload: TokenPayload, body: any) {
 
   const { error: deleteError } = await supabase.from("books").delete().eq("id", bookId);
   if (deleteError) {
-    return new Response(JSON.stringify({ success: false, message: `فشل حذف المذكرة: ${deleteError.message}` }),
+    return new Response(JSON.stringify({ success: false, message: `فشل حذف المذكرة: ${safeErrorMessage(deleteError)}` }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 

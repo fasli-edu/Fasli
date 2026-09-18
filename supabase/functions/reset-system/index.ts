@@ -4,7 +4,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, AuthError, verifyToken, requireOwnClientId, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, AuthError, verifyToken, requireOwnClientId, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 import { signInAuthUser, syntheticEmailFor } from "../_shared/authProvision.ts";
 
 // ============================================
@@ -138,7 +138,7 @@ serve(async (req) => {
     const { data: students, error: studentsError } = await supabase
       .from("students").select("uid").eq("teacher_id", finalClientId);
 
-    if (studentsError) throw new Error(`فشل جلب الطلاب: ${studentsError.message}`);
+    if (studentsError) throw new Error(`فشل جلب الطلاب: ${safeErrorMessage(studentsError)}`);
     const uids = (students || []).map((s: any) => s.uid);
 
     // ✅ بيانات الطلاب الأكاديمية (الحضور، المدفوعات، الدرجات، سداد المذكرات) — كل فئة حسب اختيار المستخدم

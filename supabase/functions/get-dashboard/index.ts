@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, AuthError, verifyToken, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, AuthError, verifyToken, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -85,10 +85,10 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    if (countError) throw new Error(`فشل جلب عدد الطلاب: ${countError.message}`);
-    if (attendanceError) throw new Error(`فشل جلب حضور اليوم: ${attendanceError.message}`);
-    if (groupsError) throw new Error(`فشل جلب المجموعات: ${groupsError.message}`);
-    if (groupRowsError) throw new Error(`فشل جلب جدول المجموعات: ${groupRowsError.message}`);
+    if (countError) throw new Error(`فشل جلب عدد الطلاب: ${safeErrorMessage(countError)}`);
+    if (attendanceError) throw new Error(`فشل جلب حضور اليوم: ${safeErrorMessage(attendanceError)}`);
+    if (groupsError) throw new Error(`فشل جلب المجموعات: ${safeErrorMessage(groupsError)}`);
+    if (groupRowsError) throw new Error(`فشل جلب جدول المجموعات: ${safeErrorMessage(groupRowsError)}`);
     if (weekAttError) console.error("خطأ في جلب حضور آخر 7 أيام:", weekAttError);
     if (activitiesError) console.error("❌ خطأ في جلب النشاطات:", activitiesError);
 

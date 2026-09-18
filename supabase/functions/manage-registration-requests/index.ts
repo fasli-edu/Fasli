@@ -1,7 +1,7 @@
 // supabase/functions/manage-registration-requests/index.ts
 // ✅ إدارة طلبات الانضمام (جانب المدرس) — action: list | approve | reject
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, TokenPayload, AuthError, verifyToken } from "../_shared/auth.ts";
+import { corsHeaders, TokenPayload, AuthError, verifyToken, safeErrorMessage } from "../_shared/auth.ts";
 import { provisionAuthUser, deleteAuthUser, syntheticEmailFor } from "../_shared/authProvision.ts";
 
 function authErrorResponse(error: unknown) {
@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
         });
         if (insertParentError) {
           await deleteAuthUser(newParentAuthUserId);
-          return new Response(JSON.stringify({ success: false, message: `⚠️ فشل إنشاء ولي الأمر: ${insertParentError.message}` }),
+          return new Response(JSON.stringify({ success: false, message: `⚠️ فشل إنشاء ولي الأمر: ${safeErrorMessage(insertParentError)}` }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
           await deleteAuthUser(newParentAuthUserId);
           await supabase.from("parents").delete().eq("phone", reqRow.parent_phone);
         }
-        return new Response(JSON.stringify({ success: false, message: `⚠️ فشلت إضافة الطالب: ${insertError.message}` }),
+        return new Response(JSON.stringify({ success: false, message: `⚠️ فشلت إضافة الطالب: ${safeErrorMessage(insertError)}` }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 

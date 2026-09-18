@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, AuthError, verifyToken, authErrorResponse } from "../_shared/auth.ts";
+import { corsHeaders, AuthError, verifyToken, authErrorResponse, safeErrorMessage } from "../_shared/auth.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -44,7 +44,7 @@ serve(async (req) => {
     if (studentsError) {
       console.error("❌ فشل جلب الطلاب:", studentsError);
       return new Response(
-        JSON.stringify({ success: false, message: `فشل جلب الطلاب: ${studentsError.message}` }),
+        JSON.stringify({ success: false, message: `فشل جلب الطلاب: ${safeErrorMessage(studentsError)}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -67,7 +67,7 @@ serve(async (req) => {
     if (paymentsError) {
       console.error("❌ فشل جلب المدفوعات:", paymentsError);
       return new Response(
-        JSON.stringify({ success: false, message: `فشل جلب المدفوعات: ${paymentsError.message}` }),
+        JSON.stringify({ success: false, message: `فشل جلب المدفوعات: ${safeErrorMessage(paymentsError)}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -81,7 +81,7 @@ serve(async (req) => {
     if (bookError) {
       console.error("❌ فشل جلب المذكرة:", bookError);
       return new Response(
-        JSON.stringify({ success: false, message: `فشل جلب المذكرة: ${bookError.message}` }),
+        JSON.stringify({ success: false, message: `فشل جلب المذكرة: ${safeErrorMessage(bookError)}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
