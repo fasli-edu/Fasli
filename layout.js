@@ -126,7 +126,7 @@
        الخلفية sidebar-backdrop اللي شغالة بغض النظر عن حجم الشاشة) وبيبوّظ الشكل. بنعيد
        ضبط الحالة تلقائيًا كل ما حجم الشاشة يتغيّر (بما فيه التدوير) عشان تفضل متسقة مع
        العرض الحالي دايماً. */
-    window.addEventListener('resize', function () {
+    function resyncLayoutOnViewportChange() {
       var sb = document.getElementById('sidebar');
       var backdrop = document.getElementById('sidebarBackdrop');
       if (!sb) return;
@@ -136,6 +136,18 @@
       } else {
         sb.classList.remove('collapsed');
       }
+      // ✅ لو نافذة الإشعارات مفتوحة، موقعها المحسوب (positionNotifPanel) كان محسوب على
+      // أبعاد الشاشة القديمة قبل التدوير — أقفلها بدل ما تفضل عالقة في مكان غلط
+      var notifPanel = document.getElementById('notifPanel');
+      if (notifPanel) notifPanel.classList.remove('open');
+    }
+    // ✅ بعض إصدارات WebView (خصوصًا أندرويد) مش بتطلق حدث resize بشكل موثوق مع التدوير —
+    // orientationchange بديل احتياطي بيتطلق في الحالات دي، فبنسمع للاتنين مع بعض
+    window.addEventListener('resize', resyncLayoutOnViewportChange);
+    window.addEventListener('orientationchange', function () {
+      // ✅ orientationchange بيتطلق أحيانًا قبل ما المتصفح يحدّث window.innerWidth فعليًا —
+      // تأخير بسيط يضمن إن القيمة اللي بنقرأها هي أبعاد الوضع الجديد بعد التدوير مش القديم
+      setTimeout(resyncLayoutOnViewportChange, 100);
     });
   };
 
