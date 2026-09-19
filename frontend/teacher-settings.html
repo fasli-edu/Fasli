@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=2"></script>
+<script src="session-restore.js?v=3"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>إعدادات الحساب - فَصلي</title>
   <meta name="description" content="بيانات الحساب والتواصل والشعار والنسخ الاحتياطي في نظام فَصلي">
@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=54">
+  <link rel="stylesheet" href="style.css?v=55">
   <style>
     .wifi-container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
     .wifi-card { background: white; border-radius: var(--radius-lg); border: 1px solid var(--gray-200); padding: 24px; margin-bottom: 24px; transition: var(--transition); }
@@ -45,7 +45,7 @@
 
   <div class="app-shell">
     <div id="app-shell-sidebar-slot"></div>
-    <script src="layout.js?v=6"></script>
+    <script src="layout.js?v=7"></script>
     <script>renderShell({active:'settings', isAssistant: sessionStorage.getItem('userRole') === 'assistant'});</script>
 
     <div class="main-area">
@@ -1485,7 +1485,7 @@ async function confirmReset() {
     }
   </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="session-refresh.js?v=7"></script>
+<script src="session-refresh.js?v=8"></script>
 <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.umd.min.js"></script>
 <script src="webauthn.js?v=6"></script>
 <script src="recovery-email.js?v=3"></script>
