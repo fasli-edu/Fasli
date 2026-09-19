@@ -53,13 +53,27 @@
     setTimeout(() => { if (window.__fasliSessionReadyResolve) window.__fasliSessionReadyResolve(); }, 6000);
 
     // ✅ (أمان/وظيفي حرج) refresh token بتاع Supabase يُستخدم لمرة واحدة بس وبيتجدد نفسه —
-    // لو نداءين لصفحات/تابات مختلفة حاولوا يجدّدوا في نفس اللحظة، التاني هيفشل لأن الأول
-    // كان خلاص استهلك الـtoken القديم. الـ singleton ده بيضمن محاولة تجديد واحدة بس في نفس
-    // الوقت، وأي حد تاني محتاج نفس النتيجة بينتظر نفس الـpromise بدل ما يبدأ محاولة مستقلة
+    // لو نداءين حاولوا يجدّدوا في نفس اللحظة، التاني هيفشل لأن الأول كان خلاص استهلك الـtoken
+    // القديم. الـ singleton ده بيضمن محاولة تجديد واحدة بس في نفس الوقت *من عندنا احنا*، لكن
+    // ده لوحده مش كفاية: session-refresh.js بيعمل عميل Supabase منفصل تمامًا بـ
+    // autoRefreshToken:true، وده بيجدول تجديد تلقائي داخلي خاص بيه هو، من غير ما يعرف حاجة
+    // عن الـsingleton ده — يعني كانوا فعليًا اتنين آلية تجديد مستقلين بيتسابقوا على نفس
+    // الـrefresh token، وأي واحد فيهم يكسب السباق بيخلي التاني يفشل (ويرجّع خروج المستخدم
+    // رغم إن الجلسة كانت سليمة). الحل: لو العميل المشترك (window.__fasliSessionClient) موجود،
+    // نجدد من خلاله هو بالظبط (نفس الكيان اللي session-refresh.js عامل عليه autoRefreshToken)
+    // بدل ما نعمل طلب مستقل بيتسابق معاه — وده بيوحّد كل عمليات التجديد في مصدر واحد بس.
     window.__fasliActiveRefresh = function () {
       if (window.__fasliRefreshInFlight) return window.__fasliRefreshInFlight;
       window.__fasliRefreshInFlight = (async () => {
         try {
+          if (window.__fasliSessionClient) {
+            const { data, error } = await window.__fasliSessionClient.auth.refreshSession();
+            if (!error && data?.session?.access_token) return data.session.access_token;
+            if (!error) return null;
+            // ✅ لو العميل المشترك فشل (زي عدم وجود جلسة عنده أصلاً)، نكمل على المسار
+            // الاحتياطي تحت بدل ما نستسلم فورًا
+          }
+
           const refreshToken = sessionStorage.getItem('refreshToken');
           if (!refreshToken) return null;
           const res = await originalFetch(PROJECT_URL + '/auth/v1/token?grant_type=refresh_token', {

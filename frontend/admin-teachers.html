@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=3"></script>
+<script src="session-restore.js?v=4"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>إدارة النظام - فَصلي</title>
   <meta name="description" content="لوحة إدارة النظام العامة (الماستر) في فَصلي - إدارة المدرسين والكروت والإعدادات">
@@ -1418,6 +1418,9 @@
       }
       const notifPanel = document.getElementById('notifPanel');
       if (notifPanel) notifPanel.classList.remove('open');
+      // ✅ بعض إصدارات WebView بتفضل شكل التخطيط القديم بعد دورة تدوير كاملة رغم إن الأبعاد
+      // رجعت صح — قراءة offsetHeight بتجبر إعادة رسم متزامنة كإجراء وقائي إضافي
+      void document.body.offsetHeight;
     }
     // ✅ بعض إصدارات WebView (خصوصًا أندرويد) مش بتطلق حدث resize بشكل موثوق مع التدوير —
     // orientationchange بديل احتياطي بيتطلق في الحالات دي، فبنسمع للاتنين مع بعض
