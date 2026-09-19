@@ -1,66 +1,26 @@
-// sw.js — عامل الخدمة (Service Worker) بتاع فَصلي
-// بيخزّن "هيكل" التطبيق (CSS/JS/الأيقونات) للسرعة والعمل الجزئي بدون إنترنت
-// لكن **مايخزّنش** أي طلب لـ Supabase (بيانات الطلاب/الدرجات/المدفوعات) — دي المفروض دايماً تيجي من الإنترنت مباشرة
+// sw.js — تم إلغاء استخدامه بالكامل
+// ============================================
+// بعد تكرار مشاكل تعليق نسخ قديمة من الكود على أجهزة المستخدمين رغم كل محاولات إصلاح
+// استراتيجية التخزين (كاش أول، بعدين إنترنت أول)، القرار النهائي: عامل الخدمة (Service
+// Worker) ده نفسه بقى مصدر مخاطرة غير متوقعة أكتر ما بيفيد (خصوصًا إن دعم WebView
+// بتاع أندرويد لعمال الخدمة كان دايمًا أقل ثباتًا من متصفح حقيقي). الملف ده دلوقتي
+// "مفتاح إيقاف ذاتي": أي جهاز عنده نسخة قديمة مسجّلة هيحمّل الملف ده، يشوف إنه مختلف
+// عن اللي عنده، فيثبّته وينفّذ activate بتاعه — اللي بيمسح كل الكاش القديم ويلغي تسجيل
+// نفسه بالكامل، فمفيش عامل خدمة هيفضل شغال أصلاً بعد كده على أي جهاز.
+// ============================================
 
-const CACHE_VERSION = 'fasli-shell-v5';
-const SHELL_ASSETS = [
-  './style.css',
-  './activity-format.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll(SHELL_ASSETS)).catch(() => {})
-  );
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
-  // ✅ أي طلب لسيرفر Supabase (بيانات حية) — بيروح للإنترنت مباشرة دايماً، مفيش تخزين مؤقت خالص
-  if (url.hostname.includes('supabase.co')) {
-    return; // نسيب المتصفح يتعامل مع الطلب عادي بدون تدخل
-  }
-
-  // الصفحات (HTML): نحاول الإنترنت الأول، ولو مفيش اتصال نرجع للنسخة المخزنة لو موجودة.
-  // ⚠️ cache:'no-store' ضروري هنا — fetch() العادي بيحترم Cache-Control العادي بتاع
-  // المتصفح (مش بس Cache Storage API اللي إحنا بنتحكم فيه)، فمن غيرها صفحة زي login.html
-  // ممكن تفضل بتترجع نسخة HTTP قديمة مخزّنة لفترة طويلة حتى لو "الإنترنت" شغال فعلاً —
-  // وده اللي كان بيخلي إصلاحات جوه login.html (زي رابط استرجاع كلمة المرور) تفضل مش ظاهرة
-  // لمستخدم زاره قبل كده، حتى بعد ما ننشر التعديل فعليًا على GitHub Pages
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // ✅ (أمان/وظيفي حرج) باقي الملفات الثابتة (CSS/JS/صور) كانت "الكاش الأول" — بترجع النسخة
-  // المخزّنة فورًا من غير ما تتأكد أصلاً إن في نسخة أحدث على الإنترنت. الملفات دي بترقيم إصدار
-  // في اسمها (؟v=رقم) بالظبط عشان نضمن تحميل نسخة جديدة كل ما نزوّد الرقم — لكن استراتيجية
-  // "الكاش الأول" دي كانت بتضيف طبقة تخزين ثانية إضافية فوق تخزين المتصفح العادي، فحتى لو
-  // زوّدنا رقم الإصدار صح، أي جهاز خزّن نسخة قديمة قبل كده كان ممكن يفضل شايلها لفترة أطول
-  // من غير داعي. دلوقتي "الإنترنت الأول" (زي صفحات الـHTML بالظبط) — نجرب نجيب النسخة
-  // الأحدث دايمًا لو في اتصال، ونرجع للنسخة المخزّنة بس لو الجهاز أوفلاين فعليًا
-  event.respondWith(
-    fetch(event.request).then((response) => {
-      if (response && response.status === 200 && event.request.method === 'GET') {
-        const clone = response.clone();
-        caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
-      }
-      return response;
-    }).catch(() => caches.match(event.request))
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach((client) => client.navigate(client.url));
+    })()
   );
 });
