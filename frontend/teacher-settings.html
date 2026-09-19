@@ -1326,7 +1326,11 @@ async function confirmReset() {
           if (localStorage.getItem('fasliRememberMe') === 'true') {
             localStorage.setItem('brandColor', '');
           }
-          ['--primary', '--primary-rgb', '--primary-light', '--primary-dark', '--primary-contrast'].forEach((prop) => {
+          // ✅ (طلب) كانت بترجّع --primary وشقاياه بس — السايدبار وإطار الكروت واللون الثانوي
+          // بيتحطوا من applyBrandColor() في متغيّرات منفصلة (--sidebar-bg/--card-border/--accent)
+          // مش بيتوارثوا من --primary تلقائيًا، فكانوا فاضلين على اللون المخصص القديم رغم إن
+          // الزرار بيقول "استعادة اللون الافتراضي" — لازم نمسح نفس القائمة اللي applyBrandColor بتحطها بالظبط
+          ['--primary', '--primary-rgb', '--primary-light', '--primary-dark', '--primary-contrast', '--accent', '--card-border', '--sidebar-bg'].forEach((prop) => {
             document.documentElement.style.removeProperty(prop);
           });
           document.getElementById('brandColorInput').value = '#F2B705';
