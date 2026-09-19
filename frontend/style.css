@@ -1877,7 +1877,10 @@ html body .report-preview .report-row-alert td { background: #fef2f2 !important;
   width: min(340px, calc(100vw - 24px));
   background: var(--gray-50); border: 1px solid var(--gray-200);
   border-radius: 14px; box-shadow: var(--shadow-xl);
-  z-index: 200; overflow: hidden;
+  /* ✅ الرقم ده لازم يفضل أعلى من .sidebar (100001) وrsidebar-backdrop (100000) — بعد ما بقت
+     النافذة بتتنقل لـdocument.body مباشرة (بدل ما تفضل جوه القائمة الجانبية)، بقت شقيقة ليها
+     في شجرة الـDOM، فترتيب الظهور بينهم بيتحدد بالـz-index بس، مش بترتيب التداخل القديم */
+  z-index: 100002; overflow: hidden;
 }
 .notif-panel.open { display: block; }
 .notif-panel-header {

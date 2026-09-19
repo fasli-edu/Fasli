@@ -375,7 +375,10 @@
       // ✅ (أمان/وظيفي حرج) لو في محاولة تجديد تلقائي للتوكن شغالة في الخلفية (session-refresh.js)، نستناها الأول
       // قبل ما نحكم إن الجلسة فعلاً منتهية — كانت بتتنفذ فورًا على توكن لسه بيتجدد، فتظهر
       // رسالة "التوكن غير صالح" وتسجّل خروج المستخدم لحظياً حتى لو التجديد كان هينجح لحظات بعدها.
-      if (window.__fasliSessionReady) {
+      if (window.__fasliActiveRefresh) {
+        await window.__fasliActiveRefresh();
+        if (isTokenValid()) return;
+      } else if (window.__fasliSessionReady) {
         await window.__fasliSessionReady;
         if (isTokenValid()) return;
       }
