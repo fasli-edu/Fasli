@@ -2,7 +2,7 @@
 // بيخزّن "هيكل" التطبيق (CSS/JS/الأيقونات) للسرعة والعمل الجزئي بدون إنترنت
 // لكن **مايخزّنش** أي طلب لـ Supabase (بيانات الطلاب/الدرجات/المدفوعات) — دي المفروض دايماً تيجي من الإنترنت مباشرة
 
-const CACHE_VERSION = 'fasli-shell-v4';
+const CACHE_VERSION = 'fasli-shell-v5';
 const SHELL_ASSETS = [
   './style.css',
   './activity-format.js',
@@ -47,17 +47,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // باقي الملفات الثابتة (CSS/JS/صور): نجرب الكاش الأول، ولو مش موجود نجيبها من الإنترنت ونخزّنها
+  // ✅ (أمان/وظيفي حرج) باقي الملفات الثابتة (CSS/JS/صور) كانت "الكاش الأول" — بترجع النسخة
+  // المخزّنة فورًا من غير ما تتأكد أصلاً إن في نسخة أحدث على الإنترنت. الملفات دي بترقيم إصدار
+  // في اسمها (؟v=رقم) بالظبط عشان نضمن تحميل نسخة جديدة كل ما نزوّد الرقم — لكن استراتيجية
+  // "الكاش الأول" دي كانت بتضيف طبقة تخزين ثانية إضافية فوق تخزين المتصفح العادي، فحتى لو
+  // زوّدنا رقم الإصدار صح، أي جهاز خزّن نسخة قديمة قبل كده كان ممكن يفضل شايلها لفترة أطول
+  // من غير داعي. دلوقتي "الإنترنت الأول" (زي صفحات الـHTML بالظبط) — نجرب نجيب النسخة
+  // الأحدث دايمًا لو في اتصال، ونرجع للنسخة المخزّنة بس لو الجهاز أوفلاين فعليًا
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (response && response.status === 200 && event.request.method === 'GET') {
-          const clone = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => cached);
-    })
+    fetch(event.request).then((response) => {
+      if (response && response.status === 200 && event.request.method === 'GET') {
+        const clone = response.clone();
+        caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
+      }
+      return response;
+    }).catch(() => caches.match(event.request))
   );
 });
