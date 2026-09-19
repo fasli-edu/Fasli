@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=4"></script>
+<script src="session-restore.js?v=5"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>إدارة النظام - فَصلي</title>
   <meta name="description" content="لوحة إدارة النظام العامة (الماستر) في فَصلي - إدارة المدرسين والكروت والإعدادات">
@@ -1012,7 +1012,14 @@
     const isAdmin = sessionStorage.getItem('isAdmin');
 
     if (clientId !== 'Fasli-admin' || isAdmin !== 'true') {
-      window.location.href = LOGIN_URL;
+      (async () => {
+        const recovered = window.__fasliRecoverFromPreferences ? await window.__fasliRecoverFromPreferences() : false;
+        if (recovered && sessionStorage.getItem('clientId') === 'Fasli-admin' && sessionStorage.getItem('isAdmin') === 'true') {
+          window.location.reload();
+          return;
+        }
+        window.location.href = LOGIN_URL;
+      })();
     }
 
     document.getElementById('adminName').textContent = '👤 مرحباً، المشرف';
