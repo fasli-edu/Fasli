@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=4"></script>
+<script src="session-restore.js?v=5"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>تقرير الطالب - فَصلي</title>
   <meta name="description" content="بيانات طالب محدد ومخطط نمو مستواه - نظام فَصلي">
@@ -363,7 +363,14 @@
     const assistantName = sessionStorage.getItem('assistantName') || null;
     const assistantId = sessionStorage.getItem('assistantId') || null;
 
-    if (!clientId) { sessionStorage.clear(); window.location.href = LOGIN_URL; }
+    if (!clientId) {
+      (async () => {
+        const recovered = window.__fasliRecoverFromPreferences ? await window.__fasliRecoverFromPreferences() : false;
+        if (recovered && sessionStorage.getItem('clientId')) { window.location.reload(); return; }
+        sessionStorage.clear();
+        window.location.href = LOGIN_URL;
+      })();
+    }
 
     const assistantPermissions = JSON.parse(sessionStorage.getItem('assistantPermissions') || '{}');
     const isAssistant = userRole === 'assistant';

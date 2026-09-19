@@ -21,6 +21,37 @@
   }
 
   // ============================================
+  // ✅ (Android/Capacitor) احتياطي أخير: لو "تذكرني" مفعّلة لكن localStorage فاضي أو منحرف عن
+  // Preferences (تخزين النظام الحقيقي SharedPreferences، مكان تخزين مختلف تمامًا عن localStorage
+  // بتاع الـWebView) — ده ممكن يحصل لو أندرويد نضّف بيانات الـWebView لوحدها تحت ضغط الذاكرة،
+  // أو بعد تحديث للتطبيق بيرجّع SharedPreferences من نسخة احتياطية من غير ما يمس بيانات
+  // الـWebView. الصفحات اللي بتتحقق من clientId/parentPhone/studentUid... إلخ كانت بتشوف
+  // "مفيش حاجة" في اللحظة دي وتعتبرها خروج نهائي وتمسح كل حاجة، رغم إن الجلسة الحقيقية لسه
+  // موجودة في Preferences. الدالة دي بترجع true لو لقت ورجّعت بيانات فعلاً — كل صفحة بتستخدمها
+  // كمحاولة أخيرة قبل ما تحكم إن الجلسة انتهت فعلاً.
+  window.__fasliRecoverFromPreferences = async function () {
+    try {
+      const Preferences = window.Capacitor?.Plugins?.Preferences;
+      if (!Preferences) return false;
+      const remembered = await Preferences.get({ key: 'fasliRememberMe' });
+      if (remembered?.value !== 'true') return false;
+      const { keys } = await Preferences.keys();
+      let found = false;
+      for (const key of keys) {
+        const { value } = await Preferences.get({ key });
+        if (value !== null && value !== undefined) {
+          sessionStorage.setItem(key, value);
+          localStorage.setItem(key, value);
+          found = true;
+        }
+      }
+      return found;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // ============================================
   // ✅ (طلب) "تذكرني" كانت بترجّع التوكن القديم صح، لكن لو كان خلاص منتهي الصلاحية (توكنات
   // Supabase بتنتهي بعد ساعة تقريباً — أي فتح للتطبيق بعد غيبة أطول من كده)، أول نداء بيانات
   // في الصفحة (زي loadGroups) كان بيتنفّذ فورًا بنفس التوكن القديم قبل ما session-refresh.js

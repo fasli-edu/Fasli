@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=4"></script>
+<script src="session-restore.js?v=5"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>أداء الاختبار - فَصلي</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo-icon.svg">
@@ -131,7 +131,13 @@
     }
 
     const studentUid = sessionStorage.getItem('studentUid');
-    if (!studentUid) window.location.href = LOGIN_URL;
+    if (!studentUid) {
+      (async () => {
+        const recovered = window.__fasliRecoverFromPreferences ? await window.__fasliRecoverFromPreferences() : false;
+        if (recovered && sessionStorage.getItem('studentUid')) { window.location.reload(); return; }
+        window.location.href = LOGIN_URL;
+      })();
+    }
 
     const params = new URLSearchParams(window.location.search);
     const examId = params.get('examId');

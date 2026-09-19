@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=4"></script>
+<script src="session-restore.js?v=5"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>تفاصيل الطالب - فَصلي</title>
   <meta name="description" content="تفاصيل بيانات الطالب لولي الأمر في نظام فَصلي">
@@ -366,7 +366,11 @@
     const parentPhone = sessionStorage.getItem('parentPhone');
     const parentName = sessionStorage.getItem('parentName') || 'ولي أمر';
     if (!parentPhone) {
-      window.location.href = 'login.html';
+      (async () => {
+        const recovered = window.__fasliRecoverFromPreferences ? await window.__fasliRecoverFromPreferences() : false;
+        if (recovered && sessionStorage.getItem('parentPhone')) { window.location.reload(); return; }
+        window.location.href = 'login.html';
+      })();
     }
 
     const urlParams = new URLSearchParams(window.location.search);

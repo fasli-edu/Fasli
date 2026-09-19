@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=4"></script>
+<script src="session-restore.js?v=5"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>التقارير - فَصلي</title>
   <meta name="description" content="توليد تقارير الحضور والدرجات والمدفوعات في نظام فَصلي">
@@ -273,8 +273,12 @@
     const assistantId = sessionStorage.getItem('assistantId') || null;
 
     if (!clientId) {
-      sessionStorage.clear(); localStorage.clear(); window.Capacitor?.Plugins?.Preferences?.clear().catch(() => {}); window.electronStore?.clear().catch(() => {});
-      window.location.href = LOGIN_URL;
+      (async () => {
+        const recovered = window.__fasliRecoverFromPreferences ? await window.__fasliRecoverFromPreferences() : false;
+        if (recovered && sessionStorage.getItem('clientId')) { window.location.reload(); return; }
+        sessionStorage.clear(); localStorage.clear(); window.Capacitor?.Plugins?.Preferences?.clear().catch(() => {}); window.electronStore?.clear().catch(() => {});
+        window.location.href = LOGIN_URL;
+      })();
     }
 
     const assistantPermissions = JSON.parse(sessionStorage.getItem('assistantPermissions') || '{}');

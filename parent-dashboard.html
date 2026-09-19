@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=4"></script>
+<script src="session-restore.js?v=5"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>لوحة تحكم ولي الأمر - فَصلي</title>
   <meta name="description" content="لوحة تحكم ولي الأمر لمتابعة أبنائه في نظام فَصلي">
@@ -275,8 +275,12 @@
     const parentName = sessionStorage.getItem('parentName') || 'ولي أمر';
 
     if (!parentPhone) {
-      sessionStorage.clear(); localStorage.clear(); window.Capacitor?.Plugins?.Preferences?.clear().catch(() => {}); window.electronStore?.clear().catch(() => {});
-      window.location.href = LOGIN_URL;
+      (async () => {
+        const recovered = window.__fasliRecoverFromPreferences ? await window.__fasliRecoverFromPreferences() : false;
+        if (recovered && sessionStorage.getItem('parentPhone')) { window.location.reload(); return; }
+        sessionStorage.clear(); localStorage.clear(); window.Capacitor?.Plugins?.Preferences?.clear().catch(() => {}); window.electronStore?.clear().catch(() => {});
+        window.location.href = LOGIN_URL;
+      })();
     }
 
     function showToast(message, type) {

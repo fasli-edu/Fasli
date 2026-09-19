@@ -2,7 +2,7 @@
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-<script src="session-restore.js?v=4"></script>
+<script src="session-restore.js?v=5"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>إدارة فريق العمل - فَصلي</title>
   <meta name="description" content="إدارة حسابات وصلاحيات المساعدين في نظام فَصلي">
@@ -484,8 +484,12 @@
     }
 
     if (!clientId) {
-      sessionStorage.clear(); localStorage.clear(); window.Capacitor?.Plugins?.Preferences?.clear().catch(() => {}); window.electronStore?.clear().catch(() => {});
-      window.location.href = LOGIN_URL;
+      (async () => {
+        const recovered = window.__fasliRecoverFromPreferences ? await window.__fasliRecoverFromPreferences() : false;
+        if (recovered && sessionStorage.getItem('clientId')) { window.location.reload(); return; }
+        sessionStorage.clear(); localStorage.clear(); window.Capacitor?.Plugins?.Preferences?.clear().catch(() => {}); window.electronStore?.clear().catch(() => {});
+        window.location.href = LOGIN_URL;
+      })();
     }
 
     if (isAssistant && !canViewStaff) {
