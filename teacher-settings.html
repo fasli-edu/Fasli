@@ -270,9 +270,14 @@
           <input type="color" id="brandColorInput" style="width:100%;height:44px;padding:4px;">
         </div>
 
-        <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="saveBranding()">
-          <i class="fas fa-save"></i> حفظ اللون الأساسي
-        </button>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-primary" style="flex:1;justify-content:center;" onclick="saveBranding()">
+            <i class="fas fa-save"></i> حفظ اللون الأساسي
+          </button>
+          <button class="btn" style="flex:1;justify-content:center;background:var(--gray-100,#f3f4f6);color:var(--gray-700,#374151);" onclick="resetBrandColor()">
+            <i class="fas fa-rotate-left"></i> استعادة اللون الافتراضي
+          </button>
+        </div>
       </div>
 
       <div id="brandingMessage" class="message"></div>
@@ -1299,6 +1304,41 @@ async function confirmReset() {
       }
     }
 
+    // ✅ (طلب) input[type=color] لازم قيمة دايمًا، فمفيش طريقة "يفضّى" اللون من عنصر الفورم
+    // نفسه — المدرس اللي جرّب لون مخصص ومحتاج يرجع للون الافتراضي بتاع النظام كان عالق بأي
+    // لون هو اختاره قبل كده. هنا بنمسح brand_color من الأساس (نفس منطق حذف الشعار) بدل ما
+    // نحفظ اللون الافتراضي كقيمة صريحة، عشان لو النظام غيّر لونه الافتراضي بعدين يتوارث تلقائي
+    async function resetBrandColor() {
+      const headers = getAuthHeaders();
+      if (!headers) return;
+
+      try {
+        const response = await fetch(PROJECT_URL + '/functions/v1/update-teacher-contact', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ brandColor: '' })
+        });
+        if (response.status === 401) { handleUnauthorized('انتهت صلاحية الجلسة'); return; }
+        const result = await response.json();
+        if (result.success) {
+          showBrandingMessage('✅ رجع اللون الافتراضي', 'success');
+          sessionStorage.setItem('brandColor', '');
+          if (localStorage.getItem('fasliRememberMe') === 'true') {
+            localStorage.setItem('brandColor', '');
+          }
+          ['--primary', '--primary-rgb', '--primary-light', '--primary-dark', '--primary-contrast'].forEach((prop) => {
+            document.documentElement.style.removeProperty(prop);
+          });
+          document.getElementById('brandColorInput').value = '#F2B705';
+        } else {
+          showBrandingMessage('❌ ' + result.message, 'error');
+        }
+      } catch (error) {
+        console.error('❌ خطأ في استعادة اللون الافتراضي:', error);
+        showBrandingMessage('❌ فشل استعادة اللون الافتراضي: ' + error.message, 'error');
+      }
+    }
+
     // ============================================
     // رفع صورة الشعار الفعلية (بدل رابط نصي)
     // ============================================
@@ -1493,7 +1533,7 @@ async function confirmReset() {
 <script src="session-refresh.js?v=8"></script>
 <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.umd.min.js"></script>
 <script src="webauthn.js?v=6"></script>
-<script src="recovery-email.js?v=3"></script>
+<script src="recovery-email.js?v=4"></script>
 <script src="branding.js?v=4"></script>
 <script src="custom-dialogs.js?v=4"></script>
 </body>
