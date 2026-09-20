@@ -604,7 +604,6 @@
       <button class="sub-tab-btn" data-subtab="ads" onclick="switchSettingsSubTab('ads')">🖼️ الصور الإعلانية</button>
       <button class="sub-tab-btn" data-subtab="background" onclick="switchSettingsSubTab('background')">🖼️ صور الخلفية</button>
       <button class="sub-tab-btn" data-subtab="portalBanner" onclick="switchSettingsSubTab('portalBanner')">📣 لافتة صفحة الطالب/ولي الأمر</button>
-      <button class="sub-tab-btn" data-subtab="pushNotif" onclick="switchSettingsSubTab('pushNotif')">🔔 الإشعارات الحقيقية</button>
     </div>
 
     <div class="card settings-subtab-panel" data-subtab-panel="contact">
@@ -746,57 +745,6 @@
       <div id="portalBannerAudiences"></div>
     </div>
 
-    <!-- ✅ Batch 32: تفعيل الإشعارات الحقيقية (Push) على الموبايل/المتصفح — قبل كده كان الإشعار
-         بيظهر جوه جرس التطبيق بس (لازم تكون فاتح الصفحة فعلياً عشان تشوفه)، دلوقتي ممكن يوصل
-         كإشعار حقيقي على الجهاز حتى لو التطبيق مقفول، لكن محتاج مشروع Firebase مربوط -->
-    <div class="card settings-subtab-panel" data-subtab-panel="pushNotif" style="display:none;">
-      <h2>🔔 الإشعارات الحقيقية (Push) — لولي الأمر والطالب والمدرس والمساعد</h2>
-      <p style="color:var(--muted-text);font-size:13px;margin-bottom:16px;line-height:1.8;">
-        بدون الإعدادات دي، الإشعارات بتظهر جوه جرس التطبيق بس (لازم يكون التطبيق مفتوح عشان تظهر).
-        عشان توصل كإشعار حقيقي على الموبايل/المتصفح حتى لو التطبيق مقفول، محتاج:
-        <br>1) تعمل مشروع مجاني على <span dir="ltr" style="font-family:monospace">console.firebase.google.com</span> (لو مالكش واحد).
-        <br>2) من إعدادات المشروع ⚙️ → General → "Your apps" → أضف تطبيق Web (&lt;/&gt;) وهتلاقي بيانات الإعدادات (Web config) تحت — انسخها في الحقول اللي تحت.
-        <br>3) من نفس الإعدادات → تبويب Cloud Messaging → "Web configuration" → "Generate key pair" وده هيديك "مفتاح VAPID" — انسخه في الحقل الأخير تحت.
-        <br>4) من ⚙️ → Service Accounts → "Generate new private key" (هينزل ملف JSON) — الملف ده متحطش هنا، لازم تضيفه كمتغير بيئة اسمه <span dir="ltr" style="font-family:monospace">FIREBASE_SERVICE_ACCOUNT</span> في إعدادات Supabase Edge Functions (Settings → Edge Functions → Secrets)، وتحط محتوى الملف كامل كنص جوّاه.
-      </p>
-      <div class="field-row">
-        <div class="field">
-          <label>Firebase API Key</label>
-          <input type="text" id="settingsFirebaseApiKey" placeholder="AIzaSy..." dir="ltr">
-        </div>
-        <div class="field">
-          <label>Auth Domain</label>
-          <input type="text" id="settingsFirebaseAuthDomain" placeholder="your-project.firebaseapp.com" dir="ltr">
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Project ID</label>
-          <input type="text" id="settingsFirebaseProjectId" placeholder="your-project-id" dir="ltr">
-        </div>
-        <div class="field">
-          <label>Storage Bucket</label>
-          <input type="text" id="settingsFirebaseStorageBucket" placeholder="your-project.appspot.com" dir="ltr">
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Messaging Sender ID</label>
-          <input type="text" id="settingsFirebaseMessagingSenderId" placeholder="1234567890" dir="ltr">
-        </div>
-        <div class="field">
-          <label>App ID</label>
-          <input type="text" id="settingsFirebaseAppId" placeholder="1:1234567890:web:xxxxx" dir="ltr">
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>مفتاح VAPID (Web Push certificate)</label>
-          <input type="text" id="settingsFirebaseVapidKey" placeholder="B..." dir="ltr">
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="savePushSettings()">💾 حفظ إعدادات الإشعارات</button>
-    </div>
   </div>
 
   <div id="panelProfile" class="container" style="display:none;">
@@ -2086,13 +2034,6 @@
         document.getElementById('loginCreditText').value = data.login_credit_text || '';
         document.getElementById('settingsDesktopUrl').value = data.desktop_download_url || '';
         document.getElementById('settingsMobileUrl').value = data.mobile_app_url || '';
-        document.getElementById('settingsFirebaseApiKey').value = data.firebase_api_key || '';
-        document.getElementById('settingsFirebaseAuthDomain').value = data.firebase_auth_domain || '';
-        document.getElementById('settingsFirebaseProjectId').value = data.firebase_project_id || '';
-        document.getElementById('settingsFirebaseStorageBucket').value = data.firebase_storage_bucket || '';
-        document.getElementById('settingsFirebaseMessagingSenderId').value = data.firebase_messaging_sender_id || '';
-        document.getElementById('settingsFirebaseAppId').value = data.firebase_app_id || '';
-        document.getElementById('settingsFirebaseVapidKey').value = data.firebase_vapid_key || '';
         document.getElementById('settingsShowDownloadSection').checked = data.show_download_section !== false;
         PORTAL_BANNER_AUDIENCES.forEach(a => {
           document.getElementById(pbId(a.key, 'show')).checked = !!data[a.dataShowKey];
@@ -2142,33 +2083,6 @@
         }
       } catch (error) {
         console.error('❌ خطأ في حفظ الإعدادات:', error);
-        showSettingsMessage('❌ فشل حفظ الإعدادات: ' + error.message, 'error');
-      }
-    }
-
-    // ✅ Batch 32: حفظ إعدادات Firebase (منفصلة عن saveSystemSettings عشان لو الأدمن غيّر
-    // تاب الإشعارات بس، منبعتش قيم فاضية تمسح باقي إعدادات التبويبات التانية بالغلط)
-    async function savePushSettings() {
-      const headers = getAuthHeaders();
-      if (!headers) return;
-      const firebaseApiKey = document.getElementById('settingsFirebaseApiKey').value.trim();
-      const firebaseAuthDomain = document.getElementById('settingsFirebaseAuthDomain').value.trim();
-      const firebaseProjectId = document.getElementById('settingsFirebaseProjectId').value.trim();
-      const firebaseStorageBucket = document.getElementById('settingsFirebaseStorageBucket').value.trim();
-      const firebaseMessagingSenderId = document.getElementById('settingsFirebaseMessagingSenderId').value.trim();
-      const firebaseAppId = document.getElementById('settingsFirebaseAppId').value.trim();
-      const firebaseVapidKey = document.getElementById('settingsFirebaseVapidKey').value.trim();
-      try {
-        const response = await fetch(PROJECT_URL + '/functions/v1/update-system-settings', {
-          method: 'POST', headers: headers,
-          body: JSON.stringify({ firebaseApiKey, firebaseAuthDomain, firebaseProjectId, firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, firebaseVapidKey })
-        });
-        if (response.status === 401) { handleUnauthorized('انتهت صلاحية الجلسة'); return; }
-        const result = await response.json();
-        if (result.success) showSettingsMessage('✅ تم حفظ إعدادات الإشعارات', 'success');
-        else showSettingsMessage('❌ ' + result.message, 'error');
-      } catch (error) {
-        console.error('❌ خطأ في حفظ إعدادات الإشعارات:', error);
         showSettingsMessage('❌ فشل حفظ الإعدادات: ' + error.message, 'error');
       }
     }
