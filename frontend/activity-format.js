@@ -9,6 +9,9 @@ const ACTIVITY_LABELS = {
   transfer_student: { text: 'نقل طالب لمجموعة تانية', badge: 'badge-warning' },
   link_rfid_card: { text: 'ربط كارت RFID بطالب', badge: 'badge-primary' },
   delete_student: { text: 'حذف طالب', badge: 'badge-danger' },
+  archive_student: { text: 'أرشف طالب', badge: 'badge-warning' },
+  unarchive_student: { text: 'ألغى أرشفة طالب', badge: 'badge-success' },
+  bulk_import_students: { text: 'استورد طلاب بالجملة', badge: 'badge-success' },
   add_grade: { text: 'رصد درجة', badge: 'badge-primary' },
   bulk_add_grade: { text: 'رصد درجة لعدة طلاب', badge: 'badge-primary' },
   edit_grade: { text: 'عدّل درجة', badge: 'badge-warning' },
@@ -34,12 +37,15 @@ const ACTIVITY_LABELS = {
   delete_assistant: { text: 'حذف مساعد', badge: 'badge-danger' },
   reset_password: { text: 'أعاد تعيين كلمة مرور', badge: 'badge-warning' },
   reset_parent_password: { text: 'أعاد تعيين كلمة مرور ولي أمر', badge: 'badge-warning' },
+  reset_student_password: { text: 'أعاد تعيين كلمة مرور طالب', badge: 'badge-warning' },
   change_password: { text: 'غيّر كلمة المرور', badge: 'badge-info' },
   reset_system: { text: 'أعاد تهيئة النظام بالكامل', badge: 'badge-danger' },
   add_teacher: { text: 'أضاف مدرس جديد', badge: 'badge-success' },
   update_teacher: { text: 'عدّل بيانات مدرس', badge: 'badge-warning' },
   delete_teacher: { text: 'حذف مدرس', badge: 'badge-danger' },
   bulk_message: { text: 'أرسل رسالة جماعية', badge: 'badge-info' },
+  center_teacher_message: { text: 'أرسل إعلان لمدرّسي السنتر', badge: 'badge-info' },
+  center_bulk_message: { text: 'أرسل رسالة جماعية من السنتر', badge: 'badge-info' },
   export_backup: { text: 'صدّر نسخة احتياطية', badge: 'badge-info' },
   restore_backup: { text: 'استعاد نسخة احتياطية', badge: 'badge-warning' },
 };
@@ -163,6 +169,15 @@ function formatActivity(log) {
       if (det.student_name) parts.push(`الطالب: ${det.student_name}`);
       if (det.old_group && det.new_group) parts.push(`من "${det.old_group}" إلى "${det.new_group}"`);
       break;
+    case 'archive_student':
+    case 'unarchive_student':
+    case 'reset_student_password':
+      if (det.student_name) parts.push(`الطالب: ${det.student_name}`);
+      break;
+    case 'bulk_import_students':
+      if (det.success !== undefined && det.total !== undefined) parts.push(`نجح: ${det.success} من ${det.total}`);
+      if (det.failed) parts.push(`فشل: ${det.failed}`);
+      break;
     case 'link_rfid_card':
       if (det.student_name) parts.push(`الطالب: ${det.student_name}`);
       if (det.new_uid) parts.push(`الكارت الجديد: ${det.new_uid}`);
@@ -259,6 +274,11 @@ function formatActivity(log) {
     case 'bulk_message':
       if (det.recipients !== undefined) parts.push(`المستلمين: ${det.recipients}`);
       if (det.target) parts.push(`النوع: ${(det.target === 'absent_session' || det.target === 'absent_today') ? 'الغايبين' : det.target === 'assistants' ? 'مساعدين' : 'مجموعة'}`);
+      break;
+    case 'center_teacher_message':
+    case 'center_bulk_message':
+      if (det.recipients !== undefined) parts.push(`المستلمين: ${det.recipients}`);
+      if (det.scoped_teacher && det.scoped_teacher !== 'all') parts.push(`مدرس محدد: ${det.scoped_teacher}`);
       break;
     default:
       if (det.student_name) parts.push(`الطالب: ${det.student_name}`);

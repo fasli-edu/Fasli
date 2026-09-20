@@ -175,7 +175,11 @@ serve(async (req) => {
       // الصفوف القديمة قبل إضافة العمود ده (كانت بتتبعت لولي الأمر بس أصلاً)
       query = query.eq("parent_phone", parentPhone).or("audience.eq.parent,audience.is.null");
     } else if (payload.role === "assistant") {
-      query = query.eq("assistant_id", payload.sub);
+      // ✅ (اكتشاف بالاختبار الحي) "assistant_message" (رسالة المساعد نفسه لمدرسه) بيتبعت
+      // بـaudience:"teacher" و assistant_id = المساعد المرسل نفسه (للتوصيل الصحيح لصندوق
+      // المدرس) — من غير الاستثناء ده، نفس الصف كان بيرجع في صندوق المساعد نفسه كمان
+      // (assistant_id بتاعه مطابق)، فيشوف رسالته هو لنفسه وكأنها إشعار جديد وصله
+      query = query.eq("assistant_id", payload.sub).or("audience.is.null,audience.eq.assistant");
     } else if (payload.role === "student") {
       // ✅ (طلب) نفس العزل من ناحية الطالب — الصفوف القديمة (قبل audience) كانت دايماً
       // موجّهة لولي الأمر أصلاً مش للطالب، فمعندناش صفوف قديمة "للطالب" ناقصة العمود —

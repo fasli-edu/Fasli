@@ -601,8 +601,11 @@ serve(async (req) => {
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      // ✅ (طلب) دي بث/إشعار من اتجاه واحد بلا إمكانية رد (عكس محادثة المساعد الثنائية في
+      // assistant_message/teacher_to_assistant_message) — العنوان الافتراضي بقى "إشعار" مش
+      // "رسالة" عشان المساعد يفرّق فورًا بين النوعين من غير ما يفتح الإشعار
       const senderName = payload.name || "المدرس";
-      const finalTitle = assistantTitle || "رسالة من المدرس";
+      const finalTitle = assistantTitle || "إشعار من المدرس";
       const rows = assistants.map((a: any) => ({
         teacher_id: finalClientId,
         assistant_id: String(a.id),
@@ -737,7 +740,9 @@ serve(async (req) => {
         .from("teachers").select("name").eq("client_id", finalClientId).maybeSingle();
       senderName = teacherRow?.name || "المدرس";
     }
-    const finalTitle = title || "رسالة جديدة";
+    // ✅ (طلب) نفس تصحيح التسمية — بث جماعي من اتجاه واحد لولي الأمر، مش محادثة ثنائية زي
+    // parent_message/teacher_message، فمفروض يتسمّى "إشعار" مش "رسالة" عشان يبان الفرق فورًا
+    const finalTitle = title || "إشعار جديد";
     const rows = targetStudents.map((s: any) => ({
       teacher_id: finalClientId,
       parent_phone: s.parent_phone,
