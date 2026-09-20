@@ -13,9 +13,17 @@
 String wifi_ssid = "";
 String wifi_password = "";
 const char* CLIENT_ID = "S_1";
-const char* SUPABASE_URL = "https://yxkyxxzcnxpxefodfxnl.supabase.co";
-const char* ANON_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4a3l4eHpjbnhweGVmb2RmeG5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MTY0MTEsImV4cCI6MjEwMDI5MjQxMX0.oTWvUOrR7DBnhWQF7ym6PNRlucfsESSJovPhnkqvNZc";
-const char* DEVICE_SECRET = "9dea4d628409577f207043e6e0ce70a3";
+// ⚠️ (تحديث بعد الانتقال لحساب Supabase جديد بالكامل) الرابط والمفتاح دول كانوا لسه واقفين
+// على المشروع القديم (yxkyxxzcnxpxefodfxnl) من قبل النقل — يعني أي بورد شغّال بالكود القديم
+// ده كان بيبعت بياناته لمشروع ميت مالوش أي علاقة بقاعدة البيانات الحالية. القيمتين دول لازم
+// يفضلوا نفسهم على كل الأجهزة (مشتركين، مش لكل مدرس)، عكس DEVICE_SECRET تحت.
+const char* SUPABASE_URL = "https://ugvuwiaemrrtwplphkdn.supabase.co";
+const char* ANON_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVndnV3aWFlbXJydHdwbHBoa2RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjMyNjIsImV4cCI6MjEwNTIzOTI2Mn0.Vb5eh4DZhVJe-7m9sgM4ztXKJRbOAXDRT5oeeUv8boY";
+// ⚠️ القيمة دي كانت مفتاح جهاز حساب "S_1" على قاعدة البيانات *القديمة* — قاعدة البيانات
+// الجديدة اتبنت من الصفر، فأي حساب فيها (حتى لو نفس الكود "S_1") معاه مفتاح جهاز عشوائي
+// جديد تمامًا مختلف عن ده. لازم تدخلي إعدادات الحساب في النظام الجديد وتاخدي المفتاح
+// الحالي قبل ما تعملي فلاش للبورد ده تاني، وإلا هيرجع "⛔ مفتاح الجهاز غلط"
+const char* DEVICE_SECRET = "9dea4d628409577f207043e6e0ce70a3"; // ⚠️ قديم — استبدليه بالمفتاح الحالي
 
 // =========================================================
 // 📶 إعدادات وضع نقطة الوصول (Access Point) وصفحة الإعداد

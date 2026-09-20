@@ -12,9 +12,15 @@
 // =========================================================
 String wifi_ssid = "sapry";
 String wifi_password = "123456778899";
-const char* SUPABASE_URL = "https://yxkyxxzcnxpxefodfxnl.supabase.co";
-const char* ANON_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4a3l4eHpjbnhweGVmb2RmeG5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MTY0MTEsImV4cCI6MjEwMDI5MjQxMX0.oTWvUOrR7DBnhWQF7ym6PNRlucfsESSJovPhnkqvNZc"; // ده لسه لازم بس لعمليات ping البسيطة، مش للتوثيق الحقيقي
-const char* DEVICE_SECRET = "44725c9b53657bc42e35fac1311bda7a"; // ⚠️ خد القيمة دي من زرار "عرض مفتاح جهاز الماستر" في تاب كروت المنظومة
+// ⚠️ (تحديث بعد الانتقال لحساب Supabase جديد بالكامل) الرابط والمفتاح دول كانوا لسه واقفين
+// على المشروع القديم (yxkyxxzcnxpxefodfxnl) من قبل النقل — أي بورد شغّال بالكود القديم كان
+// بيبعت بياناته لمشروع ميت مالوش أي علاقة بقاعدة البيانات الحالية
+const char* SUPABASE_URL = "https://ugvuwiaemrrtwplphkdn.supabase.co";
+const char* ANON_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVndnV3aWFlbXJydHdwbHBoa2RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjMyNjIsImV4cCI6MjEwNTIzOTI2Mn0.Vb5eh4DZhVJe-7m9sgM4ztXKJRbOAXDRT5oeeUv8boY"; // ده لسه لازم بس لعمليات ping البسيطة، مش للتوثيق الحقيقي
+// ⚠️ القيمة دي كانت مفتاح جهاز الماستر على قاعدة البيانات *القديمة* — قاعدة البيانات الجديدة
+// اتبنت من الصفر ومعاها مفتاح جديد تمامًا. خدي القيمة الحالية من زرار "عرض مفتاح جهاز
+// الماستر" في تاب كروت المنظومة (على الحساب/النظام الجديد) قبل عمل فلاش للبورد ده تاني
+const char* DEVICE_SECRET = "44725c9b53657bc42e35fac1311bda7a"; // ⚠️ قديم — استبدلها بالمفتاح الحالي من النظام الجديد
 
 // =========================================================
 // 🔌 إعدادات الدبابيس (بدون أي تغيير — نفس أماكن اللمبات والبازر زي ما كانت بالظبط)
