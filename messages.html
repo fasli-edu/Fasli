@@ -99,6 +99,7 @@
     <div class="tabs" id="messagesTabs">
       <button class="tab active" data-tab="bulk" id="bulkTabBtn" onclick="switchMessagesTab('bulk')">📨 رسائل جماعية</button>
       <button class="tab" data-tab="conversations" id="conversationsTabBtn" onclick="switchMessagesTab('conversations')">💬 محادثات أولياء الأمور</button>
+      <button class="tab" data-tab="assistantChat" id="assistantChatTabBtn" onclick="switchMessagesTab('assistantChat')">👥 <span id="assistantChatTabLabel">محادثات المساعدين</span></button>
     </div>
 
     <div id="messagesTabsWrap">
@@ -259,6 +260,36 @@
           <div style="display:flex;gap:8px;">
             <input type="text" id="conversationReplyInput" placeholder="اكتب ردك هنا..." style="flex:1;" onkeydown="if(event.key==='Enter'){sendConversationReply();}">
             <button class="btn btn-primary" onclick="sendConversationReply()"><i class="fas fa-paper-plane"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <div class="tab-content" id="tab-assistantChat">
+    <div class="card">
+      <div class="card-header">
+        <h3><i class="fas fa-user-friends" style="color:var(--info);"></i> <span id="assistantChatHeaderTitle">محادثات المساعدين</span></h3>
+      </div>
+      <div class="card-body">
+        <p style="color:var(--gray-500);font-size:13px;margin-bottom:14px;" id="assistantChatSubtitle">
+          تواصل مباشر جوه التطبيق بينك وبين مساعديك.
+        </p>
+        <div id="assistantConvInboxList">
+          <div style="text-align:center;padding:20px;color:var(--gray-400);"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</div>
+        </div>
+        <div id="assistantConvThreadView" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <button class="btn btn-outline btn-sm" id="assistantConvBackBtn" onclick="closeAssistantConvThread()"><i class="fas fa-arrow-right"></i> رجوع للقائمة</button>
+            <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" id="assistantConvDeleteBtn" onclick="deleteCurrentAssistantConversation()">
+              <i class="fas fa-trash-alt"></i> حذف المحادثة
+            </button>
+          </div>
+          <h4 style="margin:12px 0 8px;color:var(--gray-900);" id="assistantConvThreadTitle"></h4>
+          <div id="assistantConvThreadMessages" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;padding:4px;"></div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="assistantConvReplyInput" placeholder="اكتب رسالتك هنا..." style="flex:1;" onkeydown="if(event.key==='Enter'){sendAssistantConvReply();}">
+            <button class="btn btn-primary" onclick="sendAssistantConvReply()"><i class="fas fa-paper-plane"></i></button>
           </div>
         </div>
       </div>
@@ -785,7 +816,7 @@ function timeAgo(dateStr) {
       return `منذ ${days} يوم`;
     }
 
-const NOTIF_ICONS = { bulk_message: '📨', center_teacher_message: '🏢', parent_message: '💬', teacher_message: '💬' };
+const NOTIF_ICONS = { bulk_message: '📨', center_teacher_message: '🏢', parent_message: '💬', teacher_message: '💬', assistant_message: '👥', teacher_to_assistant_message: '👥' };
 
     function playNotificationSound() {
       try {
@@ -930,6 +961,11 @@ async function markOneRead(id) {
             window.location.href = 'messages.html?openConversation=' + encodeURIComponent(item.student_uid) + (nm ? '&name=' + encodeURIComponent(nm) : '');
           } else if (item.type === 'center_teacher_message') {
             window.location.href = 'messages.html';
+          } else if (item.type === 'assistant_message' && item.assistant_id) {
+            const nm = (item.details && item.details.sender_name) || '';
+            window.location.href = 'messages.html?openAssistantConversation=' + encodeURIComponent(item.assistant_id) + (nm ? '&name=' + encodeURIComponent(nm) : '');
+          } else if (item.type === 'teacher_to_assistant_message') {
+            switchMessagesTab('assistantChat');
           }
         }
       } catch (error) {
@@ -1609,6 +1645,171 @@ async function markAllRead() {
       loadConversationInbox();
     }
 
+    // ============================================
+    // ✅ محادثة ثنائية الاتجاه بين المدرس ومساعديه — تواصل داخلي، متاحة دايمًا لكل مساعد
+    // من غير أي صلاحية خاصة (مش زي محادثات أولياء الأمور اللي محتاجة manage_conversations)
+    // ============================================
+    let currentAssistantConvId = null;
+    let currentAssistantConvName = '';
+
+    async function initAssistantChatTab() {
+      if (isAssistant) {
+        // المساعد عنده محادثة واحدة بس — مع مدرسه — بيفتحها على طول من غير قائمة
+        document.getElementById('assistantChatHeaderTitle').textContent = 'محادثة مع المدرس';
+        document.getElementById('assistantChatSubtitle').textContent = 'تواصل مباشر جوه التطبيق مع المدرس بتاعك.';
+        document.getElementById('assistantConvBackBtn').style.display = 'none';
+        document.getElementById('assistantConvDeleteBtn').style.display = 'none';
+        document.getElementById('assistantConvInboxList').style.display = 'none';
+        document.getElementById('assistantConvThreadView').style.display = 'block';
+        document.getElementById('assistantConvThreadTitle').textContent = '💬 ' + (teacherName || 'المدرس');
+        await loadAssistantConvThread();
+      } else {
+        await loadAssistantConvInbox();
+      }
+    }
+
+    async function loadAssistantConvInbox() {
+      const container = document.getElementById('assistantConvInboxList');
+      try {
+        const headers = getAuthHeaders();
+        if (!headers) return;
+        const response = await fetch(PROJECT_URL + '/functions/v1/get-notifications', {
+          method: 'POST', headers, body: JSON.stringify({ mode: 'assistantConversationInbox' })
+        });
+        if (response.status === 401) return;
+        const result = await response.json();
+        if (!result.success) { container.innerHTML = '<p style="color:var(--danger);font-size:13px;">تعذر تحميل المحادثات</p>'; return; }
+
+        const threads = result.data || [];
+        if (threads.length === 0) {
+          container.innerHTML = '<p style="color:var(--gray-400);font-size:13px;text-align:center;padding:16px;">مفيش مساعدين مسجّلين لسه.</p>';
+          return;
+        }
+        threads.sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
+        container.innerHTML = threads.map(t => `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;background:var(--gray-50);margin-bottom:6px;" onclick="openAssistantConvThread(${t.assistantId}, '${escapeAttr(t.assistantName)}')">
+            <div style="flex:1;min-width:0;">
+              <strong style="color:var(--gray-900);">${escapeHtml(t.assistantName)}</strong>
+              <div style="font-size:12px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.lastMessage ? (t.lastSenderRole === 'assistant' ? '👤 هو: ' : '👨‍🏫 أنت: ') + escapeHtml(t.lastMessage) : 'لسه مفيش رسائل'}</div>
+            </div>
+            ${t.unreadCount > 0 ? `<span style="background:var(--danger);color:#fff;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:700;">${t.unreadCount}</span>` : ''}
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('❌ خطأ في تحميل محادثات المساعدين:', error);
+        container.innerHTML = '<p style="color:var(--danger);font-size:13px;">تعذر تحميل المحادثات</p>';
+      }
+    }
+
+    async function openAssistantConvThread(assistantId, assistantName) {
+      currentAssistantConvId = assistantId;
+      currentAssistantConvName = assistantName;
+      document.getElementById('assistantConvInboxList').style.display = 'none';
+      document.getElementById('assistantConvThreadView').style.display = 'block';
+      document.getElementById('assistantConvThreadTitle').textContent = '💬 ' + assistantName;
+      await loadAssistantConvThread();
+    }
+
+    async function loadAssistantConvThread() {
+      const container = document.getElementById('assistantConvThreadMessages');
+      container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray-400);"><i class="fas fa-spinner fa-spin"></i></div>';
+      try {
+        const headers = getAuthHeaders();
+        if (!headers) return;
+        const body = { mode: 'assistantConversation' };
+        if (!isAssistant) body.assistantId = currentAssistantConvId;
+        const response = await fetch(PROJECT_URL + '/functions/v1/get-notifications', {
+          method: 'POST', headers, body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        if (!result.success) { container.innerHTML = '<p style="color:var(--danger);">تعذر تحميل الرسائل</p>'; return; }
+
+        const messages = result.data || [];
+        if (messages.length === 0) {
+          container.innerHTML = '<p style="color:var(--gray-400);font-size:13px;text-align:center;">لسه مفيش رسائل في المحادثة دي.</p>';
+          return;
+        }
+        container.innerHTML = messages.map(m => {
+          const isMine = isAssistant ? m.sender_role === 'assistant' : m.sender_role === 'teacher';
+          const time = new Date(m.created_at).toLocaleString('ar-EG', { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
+          return `
+            <div style="align-self:${isMine ? 'flex-end' : 'flex-start'};max-width:80%;background:${isMine ? 'rgba(var(--primary-rgb),0.18)' : 'var(--gray-100)'};border-radius:12px;padding:8px 12px;">
+              <div style="font-size:13px;color:var(--gray-900);">${escapeHtml(m.message)}</div>
+              <div style="font-size:10.5px;color:var(--gray-500);margin-top:3px;">${escapeHtml(m.sender_name)} — ${time}</div>
+            </div>
+          `;
+        }).join('');
+        container.scrollTop = container.scrollHeight;
+      } catch (error) {
+        console.error('❌ خطأ في تحميل المحادثة:', error);
+        container.innerHTML = '<p style="color:var(--danger);">تعذر تحميل الرسائل</p>';
+      }
+    }
+
+    async function sendAssistantConvReply() {
+      const input = document.getElementById('assistantConvReplyInput');
+      const message = input.value.trim();
+      if (!message) return;
+      if (!isAssistant && !currentAssistantConvId) return;
+      try {
+        const headers = getAuthHeaders();
+        if (!headers) return;
+        const body = { mode: 'assistant_conversation', message };
+        if (!isAssistant) body.assistantId = currentAssistantConvId;
+        const response = await fetch(PROJECT_URL + '/functions/v1/send-bulk-message', {
+          method: 'POST', headers, body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        if (result.success) {
+          input.value = '';
+          await loadAssistantConvThread();
+        } else {
+          showToast('❌ ' + result.message, 'error');
+        }
+      } catch (error) {
+        console.error('❌ خطأ في إرسال الرسالة:', error);
+        showToast('❌ فشل إرسال الرسالة', 'error');
+      }
+    }
+
+    async function deleteCurrentAssistantConversation() {
+      if (!currentAssistantConvId) return;
+      if (!confirm(`هل أنت متأكد من حذف كل رسائل المحادثة مع "${currentAssistantConvName}"؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
+      try {
+        const headers = getAuthHeaders();
+        if (!headers) return;
+        const response = await fetch(PROJECT_URL + '/functions/v1/send-bulk-message', {
+          method: 'POST', headers, body: JSON.stringify({ mode: 'assistant_conversation_delete', assistantId: currentAssistantConvId })
+        });
+        const result = await response.json();
+        if (result.success) {
+          showToast('✅ تم حذف المحادثة', 'success');
+          closeAssistantConvThread();
+        } else {
+          showToast('❌ ' + result.message, 'error');
+        }
+      } catch (error) {
+        console.error('❌ خطأ في حذف المحادثة:', error);
+        showToast('❌ فشل حذف المحادثة', 'error');
+      }
+    }
+
+    function closeAssistantConvThread() {
+      currentAssistantConvId = null;
+      document.getElementById('assistantConvThreadView').style.display = 'none';
+      document.getElementById('assistantConvInboxList').style.display = 'block';
+      loadAssistantConvInbox();
+    }
+
+    async function openAssistantConvFromNotification() {
+      const params = new URLSearchParams(window.location.search);
+      const idParam = params.get('openAssistantConversation');
+      if (!idParam || isAssistant) return;
+      const name = params.get('name') || 'مساعد';
+      switchMessagesTab('assistantChat');
+      await openAssistantConvThread(Number(idParam), name);
+    }
+
     // ✅ (طلب) تبويب "محادثات أولياء الأمور" بيختفي تمامًا لو المدرس عطّل المحادثات من
     // إعدادات الحساب — الإرسال الجماعي (التبويب التاني) مش متأثر إطلاقاً
     function switchMessagesTab(name) {
@@ -1644,9 +1845,13 @@ async function markAllRead() {
     // مباشرة بدل ما يفتح على تبويب ملوش صلاحية يشوف محتواه
     function applyMessagesTabPermissions() {
       if (!isAssistant) return;
+      document.getElementById('assistantChatTabLabel').textContent = 'محادثة مع المدرس';
       document.getElementById('bulkTabBtn').style.display = canSendMessages ? '' : 'none';
       if (!canManageConversations) document.getElementById('conversationsTabBtn').style.display = 'none';
+      // ✅ محادثة المساعد مع مدرسه متاحة دايمًا (مش مربوطة بأي صلاحية) — لو المساعد ملوش
+      // صلاحية الرسائل الجماعية ولا صلاحية محادثات أولياء الأمور، يبدأ على التبويب ده مباشرة
       if (!canSendMessages && canManageConversations) switchMessagesTab('conversations');
+      else if (!canSendMessages && !canManageConversations) switchMessagesTab('assistantChat');
     }
 
     // ✅ Batch 24 (بند 6): الضغط على إشعار رسالة من ولي الأمر كان بيفتح الصفحة عادي من غير
@@ -1667,6 +1872,8 @@ async function markAllRead() {
       if (canManageConversations) {
         checkConversationsEnabled().then(openConversationFromNotification);
       }
+      // ✅ محادثة المساعدين متاحة دايمًا لأي مساعد/مدرس بغض النظر عن باقي الصلاحيات
+      initAssistantChatTab().then(openAssistantConvFromNotification);
       if (!isAssistant) document.getElementById('assistantsCategoryTab').style.display = '';
       // ✅ إعادة تطبيق الوضع الليلي مرة تانية هنا كإجراء احتياطي، لضمان تطابقه مع باقي الصفحات من أول تحميل
       const savedThemeCheck = localStorage.getItem(getThemeKey());
