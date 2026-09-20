@@ -91,6 +91,81 @@ serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ============================================
+    // ✅ محادثة ثنائية الاتجاه بين المدرس ومساعديه — سجل رسائل الثريد كامل + تعليمه كمقروء لطرف القراءة
+    // ============================================
+    if (body?.mode === "assistantConversation") {
+      if (payload.role === "assistant") {
+        const { data, error } = await supabase
+          .from("assistant_messages").select("*")
+          .eq("assistant_id", payload.sub)
+          .order("created_at", { ascending: true });
+        if (error) throw new Error(error.message);
+        const unreadIds = (data || []).filter((m: any) => m.sender_role === "teacher" && !m.is_read_by_assistant).map((m: any) => m.id);
+        if (unreadIds.length > 0) await supabase.from("assistant_messages").update({ is_read_by_assistant: true }).in("id", unreadIds);
+        return new Response(JSON.stringify({ success: true, data: data || [] }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (payload.role === "teacher") {
+        if (!body?.assistantId) throw new AuthError("⚠️ assistantId مطلوب", 400);
+        const finalClientId = ownerClientId(payload);
+        const { data, error } = await supabase
+          .from("assistant_messages").select("*")
+          .eq("assistant_id", body.assistantId).eq("teacher_id", finalClientId)
+          .order("created_at", { ascending: true });
+        if (error) throw new Error(error.message);
+        const unreadIds = (data || []).filter((m: any) => m.sender_role === "assistant" && !m.is_read_by_teacher).map((m: any) => m.id);
+        if (unreadIds.length > 0) await supabase.from("assistant_messages").update({ is_read_by_teacher: true }).in("id", unreadIds);
+        return new Response(JSON.stringify({ success: true, data: data || [] }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      throw new AuthError("⛔ غير مصرح بهذه العملية", 403);
+    }
+
+    // ============================================
+    // صندوق وارد محادثات المساعدين (جانب المدرس بس) — آخر رسالة + عدد غير المقروء لكل مساعد،
+    // وكل مساعد نشط ظاهر في القائمة حتى لو لسه معملوش أي رسالة عشان المدرس يبدأ محادثة معاه
+    // ============================================
+    if (body?.mode === "assistantConversationInbox") {
+      if (payload.role !== "teacher") throw new AuthError("⛔ غير مصرح بهذه العملية", 403);
+      const finalClientId = ownerClientId(payload);
+
+      const { data: messages, error } = await supabase
+        .from("assistant_messages").select("*")
+        .eq("teacher_id", finalClientId)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+
+      const { data: assistantsList } = await supabase
+        .from("assistants").select("id, name").eq("teacher_id", finalClientId).eq("is_active", true);
+      const nameById = new Map<number, string>((assistantsList || []).map((a: any) => [a.id, a.name]));
+
+      const threads = new Map<number, any>();
+      (messages || []).forEach((m: any) => {
+        if (!threads.has(m.assistant_id)) {
+          threads.set(m.assistant_id, {
+            assistantId: m.assistant_id,
+            assistantName: nameById.get(m.assistant_id) || "مساعد",
+            lastMessage: m.message,
+            lastMessageAt: m.created_at,
+            lastSenderRole: m.sender_role,
+            unreadCount: 0,
+          });
+        }
+        if (m.sender_role === "assistant" && !m.is_read_by_teacher) {
+          threads.get(m.assistant_id).unreadCount += 1;
+        }
+      });
+      (assistantsList || []).forEach((a: any) => {
+        if (!threads.has(a.id)) {
+          threads.set(a.id, { assistantId: a.id, assistantName: a.name, lastMessage: null, lastMessageAt: null, lastSenderRole: null, unreadCount: 0 });
+        }
+      });
+
+      return new Response(JSON.stringify({ success: true, data: Array.from(threads.values()) }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(60);
 
     if (payload.role === "parent") {
@@ -114,7 +189,13 @@ serve(async (req) => {
       // ✅ صف "parent_message" بيتبعت مرتين لكل رسالة: نسخة للمدرس (assistant_id فاضي) ونسخة
       // لكل مساعد عنده صلاحية manage_conversations (assistant_id مليان) — الاتنين بنفس الـ
       // teacher_id، فمن غير الفلتر ده كانت نسخة المساعد بتترجع في صندوق المدرس كمان
-      query = query.eq("teacher_id", finalClientId).in("type", ["center_teacher_message", "parent_message"]).is("assistant_id", null);
+      // ✅ "assistant_message" (رسالة مساعد للمدرس في محادثة المساعدين الجديدة) بيتبعت بـ
+      // assistant_id مليان (هوية المساعد المرسل)، عكس نسخة المدرس من "parent_message" اللي
+      // بتتبعت بـassistant_id فاضي عمدًا (شرط .is("assistant_id", null) تحت) — لازم نستثنيه
+      // من الشرط ده وإلا هيتفلتر برة صندوق وارد المدرس تمامًا
+      query = query.eq("teacher_id", finalClientId)
+        .in("type", ["center_teacher_message", "parent_message", "assistant_message"])
+        .or("assistant_id.is.null,type.eq.assistant_message");
     } else {
       throw new AuthError("⛔ غير مصرح بهذه العملية", 403);
     }

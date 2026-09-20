@@ -350,6 +350,99 @@ serve(async (req) => {
     }
 
     // ============================================
+    // ✅ محادثة ثنائية الاتجاه بين المدرس ومساعديه — تواصل داخلي (مش محادثات أولياء الأمور)،
+    // متاحة لكل مساعد دايمًا من غير ما تحتاج أي صلاحية خاصة (زي ما موظف يقدر دايمًا يكلّم مديره)
+    // ============================================
+    if (body.mode === "assistant_conversation") {
+      const { message: assistantConvMessage } = body;
+      if (!assistantConvMessage) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ message مطلوب" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (payload.role === "assistant") {
+        const { data: assistant } = await supabase
+          .from("assistants").select("id, teacher_id, name, is_active").eq("id", payload.sub).maybeSingle();
+        if (!assistant || !assistant.is_active) {
+          return new Response(JSON.stringify({ success: false, message: "⚠️ الحساب غير موجود أو غير مفعّل" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const senderName = payload.name || assistant.name || "مساعد";
+        const { error: insertError } = await supabase.from("assistant_messages").insert({
+          teacher_id: assistant.teacher_id, assistant_id: assistant.id,
+          sender_role: "assistant", sender_name: senderName, message: assistantConvMessage,
+          is_read_by_teacher: false, is_read_by_assistant: true,
+        });
+        if (insertError) throw new Error(insertError.message);
+        const notifTitle = `رسالة جديدة من ${senderName}`;
+        await supabase.from("notifications").insert({
+          teacher_id: assistant.teacher_id, type: "assistant_message", title: notifTitle, audience: "teacher",
+          message: assistantConvMessage, assistant_id: assistant.id,
+          details: { sender_name: senderName, sender_role: "assistant" },
+        }).then(({ error }: any) => { if (error) console.error("⚠️ فشل إشعار المدرس برسالة المساعد:", error.message); });
+        await sendPushToRecipient(supabase, "teacher", assistant.teacher_id, notifTitle, assistantConvMessage);
+        return new Response(JSON.stringify({ success: true, message: "✅ تم إرسال رسالتك" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      if (payload.role === "teacher") {
+        const { assistantId: targetAssistantId } = body;
+        if (!targetAssistantId) {
+          return new Response(JSON.stringify({ success: false, message: "⚠️ assistantId مطلوب" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const finalClientId = ownerClientId(payload);
+        const { data: assistant } = await supabase
+          .from("assistants").select("id, name").eq("id", targetAssistantId).eq("teacher_id", finalClientId).maybeSingle();
+        if (!assistant) {
+          return new Response(JSON.stringify({ success: false, message: "⚠️ المساعد غير موجود" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const teacherSenderName = payload.name || "المدرس";
+        const { error: insertError } = await supabase.from("assistant_messages").insert({
+          teacher_id: finalClientId, assistant_id: assistant.id,
+          sender_role: "teacher", sender_name: teacherSenderName, message: assistantConvMessage,
+          is_read_by_teacher: true, is_read_by_assistant: false,
+        });
+        if (insertError) throw new Error(insertError.message);
+        // ✅ (طلب) "teacher_message" اسم مستخدم بالفعل لإشعار المدرس/المساعد لولي الأمر (نوع
+        // مختلف تمامًا، audience:"parent") — لازم اسم مستقل هنا عشان صندوق وارد المساعد
+        // ومنطق الضغط على الإشعار (openConversation) ميتلخبطوش بين النوعين
+        const notifTitle = `رسالة جديدة من ${teacherSenderName}`;
+        await supabase.from("notifications").insert({
+          teacher_id: finalClientId, type: "teacher_to_assistant_message", title: notifTitle, audience: "assistant",
+          assistant_id: assistant.id, message: assistantConvMessage,
+          details: { sender_name: teacherSenderName, sender_role: "teacher" },
+        }).then(({ error }: any) => { if (error) console.error("⚠️ فشل إشعار المساعد بالرسالة:", error.message); });
+        await sendPushToRecipient(supabase, "assistant", String(assistant.id), notifTitle, assistantConvMessage);
+        return new Response(JSON.stringify({ success: true, message: "✅ تم إرسال الرسالة" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      return new Response(JSON.stringify({ success: false, message: "⛔ غير مصرح بهذه العملية" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (body.mode === "assistant_conversation_delete") {
+      const { assistantId: deleteAssistantId } = body;
+      if (!deleteAssistantId) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ assistantId مطلوب" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (payload.role !== "teacher") {
+        return new Response(JSON.stringify({ success: false, message: "⛔ غير مصرح بهذه العملية" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const finalClientId = ownerClientId(payload);
+      const { error: deleteError } = await supabase
+        .from("assistant_messages").delete()
+        .eq("teacher_id", finalClientId).eq("assistant_id", deleteAssistantId);
+      if (deleteError) throw new Error(deleteError.message);
+      return new Response(JSON.stringify({ success: true, message: "✅ تم حذف المحادثة" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ============================================
     // ✅ رسالة جماعية من صاحب السنتر — لكل أولياء أمور طلاب مدرسيه (أو مدرس واحد بعينه لو حدده)
     // نطاق مستقل تماماً عن مسار المدرس اللي فوق، عشان منلمسوش المنطق الموجود والمُختبر
     // ============================================
