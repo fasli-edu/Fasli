@@ -2559,6 +2559,15 @@ function openAttendanceModal() {
 
     async function finishPushRegistration(PushNotifications) {
       try {
+        // ✅ (طلب) لازم ننشئ قناة الإشعارات على الجهاز مرة واحدة قبل التسجيل — من غيرها
+        // أندرويد 8+ بيرفض يعرض أي إشعار قناته (channel_id) مش متعرّفة على الجهاز
+        try {
+          await PushNotifications.createChannel({
+            id: 'fasli_notifications', name: 'إشعارات فَصلي',
+            description: 'إشعارات الحضور والدرجات والمدفوعات والرسائل', importance: 4,
+            visibility: 1, sound: 'default', vibration: true,
+          });
+        } catch (e) { /* iOS أو أندرويد قديم مايدعمش القنوات — تجاهل بصمت */ }
         await PushNotifications.register();
         PushNotifications.addListener('registration', async (token) => {
           try {
