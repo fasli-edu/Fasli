@@ -1972,15 +1972,62 @@ async function markAllRead() {
         container.innerHTML = '<p style="color:var(--gray-400);font-size:13px;">مفيش حصص اتسجلت لهذه المجموعة لسه.</p>';
         return;
       }
+      // ✅ "إنهاء الآن" منطقي بس لحصة النهاردة اللي لسه شغّالة (الباك إند برضو بيرفض غير كده)
+      const todayStr = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' })).toISOString().split('T')[0];
+      const nowMs = Date.now();
       container.innerHTML = sessions.map(s => {
         const dateStr = new Date(s.session_date).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', year: 'numeric' });
+        const hasDuration = Number(s.duration_minutes) > 0;
+        const windowMs = (hasDuration ? Number(s.duration_minutes) : (s.absence_threshold_minutes || 30)) * 60000;
+        const elapsedMs = nowMs - new Date(s.created_at).getTime();
+        const isActive = s.session_date === todayStr && !s.ended_at && elapsedMs < windowMs;
         return `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--gray-50);border-radius:8px;margin-bottom:6px;font-size:13px;">
-            <span>📅 ${escapeHtml(dateStr)} — ${escapeHtml(s.session_label)}${s.instructor_name ? ' — 👤 ' + escapeHtml(s.instructor_name) : ''} — ⏱ مهلة ${s.absence_threshold_minutes} د</span>
-            <button class="btn btn-outline btn-sm" onclick="viewSessionRoster(${s.id})"><i class="fas fa-print"></i> عرض/طباعة</button>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--gray-50);border-radius:8px;margin-bottom:6px;font-size:13px;flex-wrap:wrap;gap:6px;">
+            <span>📅 ${escapeHtml(dateStr)} — ${escapeHtml(s.session_label)}${s.instructor_name ? ' — 👤 ' + escapeHtml(s.instructor_name) : ''} — ⏱ مهلة ${s.absence_threshold_minutes} د${s.ended_at ? ' — ⏹ اتقفلت يدويًا' : (isActive ? ' — 🟢 شغّالة دلوقتي' : '')}</span>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-outline btn-sm" onclick="viewSessionRoster(${s.id})"><i class="fas fa-print"></i> عرض/طباعة</button>
+              ${isActive ? `<button class="btn btn-outline btn-sm" onclick="endGroupSessionNow(${s.id})"><i class="fas fa-stop"></i> إنهاء الآن</button>` : ''}
+              <button class="btn btn-outline btn-sm" onclick="deleteGroupSession(${s.id})"><i class="fas fa-trash"></i> حذف</button>
+            </div>
           </div>
         `;
       }).join('');
+    }
+
+    // ✅ إنهاء الحصة فورًا — بيقفل باب تسجيل حضور جديد عليها على طول وبيحتسب غياب اللي معملش حضور فورًا
+    async function endGroupSessionNow(sessionId) {
+      if (!(await customConfirm('هل تؤكد إنهاء الحصة الآن؟ مفيش حد هيقدر يسجّل حضور عليها بعد كده، وأي طالب معملش حضور هيتحسب غايب فورًا.'))) return;
+      try {
+        const headers = getAuthHeaders();
+        if (!headers) return;
+        const response = await fetch(PROJECT_URL + '/functions/v1/manage-group-sessions', {
+          method: 'POST', headers, body: JSON.stringify({ action: 'endNow', sessionId })
+        });
+        const result = await response.json();
+        if (result.success) { showToast('✅ ' + result.message, 'success'); loadGroupSessions(); }
+        else showToast('❌ ' + result.message, 'error');
+      } catch (error) {
+        console.error('❌ خطأ في إنهاء الحصة:', error);
+        showToast('❌ فشل إنهاء الحصة', 'error');
+      }
+    }
+
+    // ✅ حذف حصة من السجل — الباك إند بيرفض لو فيها حضور مسجّل بالفعل (حماية من فقدان بيانات)، أي يوم كانت
+    async function deleteGroupSession(sessionId) {
+      if (!(await customConfirm('هل تؤكد حذف الحصة دي نهائيًا؟ (مش هينفع لو فيها حضور متسجّل بالفعل)'))) return;
+      try {
+        const headers = getAuthHeaders();
+        if (!headers) return;
+        const response = await fetch(PROJECT_URL + '/functions/v1/manage-group-sessions', {
+          method: 'POST', headers, body: JSON.stringify({ action: 'delete', sessionId })
+        });
+        const result = await response.json();
+        if (result.success) { showToast('✅ ' + result.message, 'success'); loadGroupSessions(); }
+        else showToast('❌ ' + result.message, 'error');
+      } catch (error) {
+        console.error('❌ خطأ في حذف الحصة:', error);
+        showToast('❌ فشل حذف الحصة', 'error');
+      }
     }
 
     // ✅ Aug 2026: سجل الحضور بيتعرض جوه الصفحة (مودال) — الطباعة اختيار بعد العرض مش تلقائي.
