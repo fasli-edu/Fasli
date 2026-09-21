@@ -95,20 +95,25 @@ async function handleGet(supabase: any, tokenClientId: string) {
     activeSessionLabel: mode.active_session_label || null,
   };
 
+  // ✅ (فِكس) وقت الانتهاء بقى مفهوم عام دلوقتي (اختياره بقى إجباري وقت الحفظ بغض النظر عن
+  // الأوضاع المختارة)، مش خاص بمجموعة دفع/مذكرة بس — فبنحسب ونرجّع remainingSeconds في كل
+  // الحالات (حتى حضور بس)، عشان الواجهة تقدر تسترجع نفس الساعة المختارة لما تتفتح تاني
+  const durationMs = (mode.duration_minutes || 30) * 60 * 1000;
+  const idleMs = Date.now() - new Date(mode.set_at || mode.updated_at).getTime();
+  const remainingSeconds = Math.max(0, Math.round((durationMs - idleMs) / 1000));
+
   const onlyAttendance = mode.attendance_enabled && !mode.payment_enabled && !mode.book_payment_enabled;
   if (onlyAttendance) {
-    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], isEnabled: true, pendingRegistration: false, ...activeContextFields }),
+    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], isEnabled: true, pendingRegistration: false, remainingSeconds, ...activeContextFields }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  const durationMs = (mode.duration_minutes || 30) * 60 * 1000;
-  const idleMs = Date.now() - new Date(mode.set_at || mode.updated_at).getTime();
   if (idleMs > durationMs) {
     await supabase.from("card_action_mode").update({
       attendance_enabled: true, payment_enabled: false, book_payment_enabled: false,
       updated_at: new Date().toISOString(),
     }).eq("teacher_id", tokenClientId);
-    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], autoReverted: true, isEnabled: true, pendingRegistration: false, ...activeContextFields }),
+    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], autoReverted: true, isEnabled: true, pendingRegistration: false, remainingSeconds: 0, ...activeContextFields }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -121,7 +126,7 @@ async function handleGet(supabase: any, tokenClientId: string) {
     success: true, readerEnabled: true, modes: activeModes, isEnabled: true, pendingRegistration: false,
     paymentTitle: mode.payment_title, paymentAmount: mode.payment_amount,
     bookId: mode.book_id, bookAmount: mode.book_amount, setBy: mode.set_by,
-    remainingSeconds: Math.max(0, Math.round((durationMs - idleMs) / 1000)),
+    remainingSeconds,
     ...activeContextFields,
   }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
@@ -131,16 +136,20 @@ async function handleGet(supabase: any, tokenClientId: string) {
 // ============================================
 async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: string, body: any) {
   const {
-    modes, paymentTitle, paymentAmount, bookId, bookAmount, isEnabled, durationMinutes,
+    modes, paymentTitle, paymentAmount, bookId, bookAmount, isEnabled,
+    // ✅ (فِكس) بقى مفهوم واحد موحّد بدل 3 حقول منفصلة (durationMinutes بتاعة وضع الكارت +
+    // newSessionThresholdMinutes + newSessionDurationMinutes بتوع الحصة) — دقايق من دلوقتي
+    // لحد "وقت انتهاء" واحد بيحسبه الفرونت إند من ساعة اختارها المستخدم (لازم تكون مستقبلية).
+    // بيتطبّق على وضع الكارت نفسه *وعلى الحصة* (سواء جديدة أو موجودة) في نفس الوقت
+    durationMinutes,
     // ✅ Aug 2026 (Phase I follow-up 10): سياق الجلسة الحالية — مجموعة+حصة مطلوبة إجباري
     // لكل الحسابات (سنتر وعادي)، والمدرس (instructorNameId) مطلوب لحسابات السنتر بس
-    instructorNameId, groupName, sessionId, newSessionLabel, newSessionThresholdMinutes,
-    // ✅ (طلب دفعة 45، متابعة) مدة الحصة نفسها (طول الحصة الفعلي) — نفس المبدأ اللي
-    // موجود أصلاً في مسار التسجيل اليدوي (record-attendance)، هنا كانت ناقصة في مسار
-    // تفعيل القارئ لحصة جديدة
-    newSessionDurationMinutes,
+    instructorNameId, groupName, sessionId, newSessionLabel,
   } = body;
 
+  // ✅ (فِكس) لازم يفضل أول فحص — طلب "إيقاف القارئ" (isEnabled:false) مابيبعتش durationMinutes
+  // خالص أصلاً (مفيش وقت انتهاء لطلب إيقاف)، فلو فحص durationMinutes سبقه كان هيرفض الإيقاف
+  // نفسه برسالة "اختر وقت انتهاء" غلط تمامًا
   if (isEnabled === false) {
     const { error: disableError } = await supabase.from("card_action_mode").upsert({
       teacher_id: tokenClientId, is_enabled: false, updated_at: new Date().toISOString(),
@@ -153,6 +162,12 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
     return new Response(JSON.stringify({ success: true, message: "⏸ تم إيقاف القارئ" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
+
+  if (!(Number(durationMinutes) > 0)) {
+    return new Response(JSON.stringify({ success: false, message: "⚠️ اختر وقت انتهاء صحيح في المستقبل" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+  const unifiedMinutes = Number(durationMinutes);
 
   const attendanceEnabled = Array.isArray(modes) ? modes.includes("attendance") : true;
   const paymentEnabled = Array.isArray(modes) && modes.includes("payment");
@@ -224,14 +239,16 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
     }
     activeSessionId = sessionRow.id;
     activeSessionLabel = sessionRow.session_label || null;
+    // ✅ نحدّث وقت انتهاء الحصة المختارة (بالفعل موجودة) على القيمة الجديدة اللي المستخدم
+    // اختارها دلوقتي — موحّد مع وضع الكارت نفسه، مش قيمتها الأصلية وقت إنشائها
+    await supabase.from("attendance_sessions")
+      .update({ absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes })
+      .eq("id", activeSessionId);
   } else if (newSessionLabel) {
-    const threshold = Number(newSessionThresholdMinutes) > 0 ? Number(newSessionThresholdMinutes) : 30;
-    // ✅ نفس منطق record-attendance بالظبط: مدة الحصة اختيارية، مفيش قيمة افتراضية مفروضة
-    const sessionDuration = Number(newSessionDurationMinutes) > 0 ? Number(newSessionDurationMinutes) : null;
     const { data: newSession, error: newSessionError } = await supabase.from("attendance_sessions").insert({
       teacher_id: tokenClientId, group_name: groupName, session_label: newSessionLabel,
       instructor_name_id: resolvedInstructorId, instructor_name: resolvedInstructorName,
-      absence_threshold_minutes: threshold, duration_minutes: sessionDuration, session_date: today,
+      absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, session_date: today,
       created_by_role: payload.role, created_by_id: payload.sub, created_by_name: payload.name || null,
     }).select("id, session_label").single();
     if (newSessionError || !newSession) {
@@ -248,7 +265,6 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
   activeInstructorNameId = resolvedInstructorId;
   activeGroupName = groupName;
 
-  const finalDuration = durationMinutes && Number(durationMinutes) > 0 ? Number(durationMinutes) : 30;
   const setByName = payload.name || (payload.role === "assistant" ? "مساعد" : "مدرس");
 
   const { error } = await supabase.from("card_action_mode").upsert({
@@ -256,7 +272,7 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
     attendance_enabled: attendanceEnabled, payment_enabled: paymentEnabled, book_payment_enabled: bookPaymentEnabled,
     payment_title: paymentEnabled ? paymentTitle : null, payment_amount: paymentEnabled ? Number(paymentAmount) : null,
     book_id: bookPaymentEnabled ? bookId : null, book_amount: bookPaymentEnabled ? Number(bookAmount) : null,
-    duration_minutes: finalDuration, set_by: setByName, set_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    duration_minutes: unifiedMinutes, set_by: setByName, set_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     active_instructor_name_id: activeInstructorNameId, active_group_name: activeGroupName,
     active_session_id: activeSessionId, active_session_label: activeSessionLabel,
   }, { onConflict: "teacher_id" });
@@ -272,7 +288,9 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
   if (paymentEnabled) activeLabels.push("دفع اشتراك");
   if (bookPaymentEnabled) activeLabels.push("سداد مذكرة");
 
-  return new Response(JSON.stringify({ success: true, message: `✅ الكارت دلوقتي شغّال على: ${activeLabels.join(" + ")} لمدة ${finalDuration} دقيقة، وبعدها هيرجع لوضع الحضور بس تلقائياً` }),
+  // ✅ بعد ما وقت الانتهاء يعدّي، الحصة نفسها بتتقفل (مش بس وضع الكارت) — فمفيش داعي نقول
+  // "هيرجع لحضور بس" زي قبل كده، لأن الحضور نفسه بيتقفل كمان دلوقتي بعد وقت الانتهاء الموحّد
+  return new Response(JSON.stringify({ success: true, message: `✅ الكارت دلوقتي شغّال على: ${activeLabels.join(" + ")} — هينتهي بعد ${unifiedMinutes} دقيقة` }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 

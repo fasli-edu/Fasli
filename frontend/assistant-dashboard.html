@@ -248,7 +248,7 @@
   </div>
 
   <div class="modal-overlay" id="cardModeModal">
-    <div class="modal-box">
+    <div class="modal-box modal-box-wide">
       <div class="modal-header">
         <h3>🪪 وضع الكارت</h3>
         <button class="modal-close" onclick="closeCardModeModal()">&times;</button>
@@ -258,11 +258,7 @@
           حدد إيه اللي هيحصل لما أي طالب يمرّغ كارته على البورد.
         </p>
 
-        <!-- ✅ Batch 45 (متابعة): مودال تفعيل القارئ عند المساعد كان بنسخة قديمة جداً (مفيهاش
-             زرار تشغيل/إيقاف، ولا سياق مجموعة+حصة) — الباك اند بقى بيرفض أي تفعيل من غير
-             مجموعة+حصة إجباري (زي ما اتطبق فى dashboard.html). المودال دلوقتي منقول بنفس
-             المنطق والحقول بالظبط من dashboard.html -->
-        <div class="field" style="padding:12px;background:var(--gray-50);border-radius:10px;margin-bottom:14px;">
+        <div class="modal-section">
           <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
             <span style="font-weight:600;">⚡ تشغيل جهاز القارئ</span>
             <input type="checkbox" id="cardReaderEnabledCb" onchange="onReaderEnabledChange()" style="width:20px;height:20px;">
@@ -273,71 +269,101 @@
         </div>
 
         <div id="cardModeSettingsBody" style="display:none;">
-        <div class="field" id="cardModeCenterContext" style="padding:12px;background:var(--gray-50);border-radius:10px;margin-bottom:14px;">
-          <label style="font-weight:600;">🧑‍🏫 سياق الحصة (مجموعة + حصة النهاردة)</label>
-          <p style="font-size:12px;color:var(--gray-500);margin:4px 0 10px;">
+
+        <div class="modal-section" id="cardModeCenterContext">
+          <div class="modal-section-title">🧑‍🏫 سياق الحصة</div>
+          <p style="font-size:12px;color:var(--gray-500);margin:0 0 10px;">
             لازم تحدد المجموعة والحصة اللي القارئ هيسجّل حضورهم دلوقتي — الحصص اللي بتظهر هنا هي بس اللي اتنشأت النهاردة.
           </p>
-          <label id="cardModeInstructorLabel" style="margin-top:8px;display:none;">المدرس</label>
-          <select id="cardModeInstructorSelect" onchange="onCardModeInstructorChange()" style="display:none;">
-            <option value="">-- اختر المدرس --</option>
-          </select>
-          <label style="margin-top:8px;">المجموعة</label>
-          <select id="cardModeGroupSelect" onchange="onCardModeGroupChange()" disabled>
-            <option value="">-- اختر المدرس الأول --</option>
-          </select>
-          <label style="margin-top:8px;">الحصة</label>
-          <select id="cardModeSessionSelect" onchange="onCardModeSessionChange()" disabled>
-            <option value="">-- اختر المجموعة الأول --</option>
-          </select>
-          <div id="cardModeNewSessionBox" style="display:none;margin-top:8px;">
-            <label>اسم الحصة</label>
-            <input type="text" id="cardModeNewSessionLabel" placeholder="مثال: حصة 1، حصة مراجعة">
-            <label style="margin-top:6px;">مدة الحصة (بالدقايق) — اختياري</label>
-            <input type="number" id="cardModeNewSessionDuration" placeholder="مثال: 60">
-            <label style="margin-top:6px;">مدة احتساب الغياب (بالدقايق)</label>
-            <input type="number" id="cardModeNewSessionThreshold" placeholder="افتراضي 30" value="30">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div class="field" id="cardModeInstructorField" style="flex:1;min-width:160px;display:none;margin-bottom:0;">
+              <label id="cardModeInstructorLabel">المدرس</label>
+              <select id="cardModeInstructorSelect" onchange="onCardModeInstructorChange()">
+                <option value="">-- اختر المدرس --</option>
+              </select>
+            </div>
+            <div class="field" style="flex:1;min-width:160px;margin-bottom:0;">
+              <label>المجموعة</label>
+              <select id="cardModeGroupSelect" onchange="onCardModeGroupChange()" disabled>
+                <option value="">-- اختر المدرس الأول --</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" style="margin-top:12px;margin-bottom:0;">
+            <label>الحصة</label>
+            <select id="cardModeSessionSelect" onchange="onCardModeSessionChange()" disabled>
+              <option value="">-- اختر المجموعة الأول --</option>
+            </select>
+          </div>
+          <div id="cardModeNewSessionBox" style="display:none;margin-top:10px;">
+            <div class="field" style="margin-bottom:0;">
+              <label>اسم الحصة</label>
+              <input type="text" id="cardModeNewSessionLabel" placeholder="مثال: حصة 1، حصة مراجعة">
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>المدة اللي هيفضل شغال بيها الوضع المحدد (بالدقايق)</label>
-          <input type="number" id="cardModeDurationInput" placeholder="مثال: 30" value="30">
-          <p style="font-size:12px;color:var(--gray-500);margin-top:4px;">بعد المدة دي، الوضع بيرجع تلقائياً لـ"حضور بس" (لو كان فيه دفع أو سداد مذكرة مفعّل).</p>
+
+        <div class="modal-section">
+          <div class="modal-section-title">⏰ هتنتهي الساعة كام؟</div>
+          <input type="time" id="cardModeEndTime">
+          <p style="font-size:12px;color:var(--gray-500);margin-top:6px;">
+            لازم تكون بعد الوقت دلوقتي. بعدها، تسجيل الحضور بيتقفل على الحصة دي، وأي دفع/سداد مفعّل بيرجع لحضور بس تلقائياً.
+          </p>
         </div>
-        <div class="field">
-          <label>الأوضاع المفعّلة (تقدر تختار أكتر من وضع مع بعض)</label>
-          <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;">
-            <input type="checkbox" id="cardModeAttendance" checked disabled> ✅ تسجيل الحضور (مفعّل دايماً)
+
+        <div class="modal-section">
+          <div class="modal-section-title">🎯 الأوضاع المفعّلة (اختاري وضع واحد على الأقل)</div>
+          <p style="font-size:11.5px;color:var(--gray-500);margin:-4px 0 8px;">لو حطيتي مبلغ أقل من السعر الأصلي في الدفع/السداد، بيتسجّل كدفعة جزئية.</p>
+
+          <label class="modal-toggle-row">
+            <input type="checkbox" id="cardModeAttendance" checked onchange="onCardModeTypeChange()"> ✅ تسجيل الحضور
           </label>
-          <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;">
+
+          <label class="modal-toggle-row">
             <input type="checkbox" id="cardModePaymentCb" onchange="onCardModeTypeChange()"> 💰 دفع اشتراك
           </label>
-          <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;">
+          <div id="cardModePaymentField" style="display:none;padding-inline-start:29px;margin-bottom:10px;">
+            <div class="field-grid-2">
+              <div class="field" style="margin-bottom:0;">
+                <label>بند السداد</label>
+                <select id="cardModePaymentTitle" onchange="onCardModePaymentTitleChange()">
+                  <option value="">-- اختر البند --</option>
+                  <option value="__new__">➕ إضافة بند جديد...</option>
+                </select>
+              </div>
+              <div class="field" style="margin-bottom:0;">
+                <label>المبلغ المدفوع دلوقتي</label>
+                <input type="number" id="cardModePaymentAmount" placeholder="المبلغ">
+              </div>
+            </div>
+            <div id="cardModeNewPaymentTitleBox" style="display:none;margin-top:8px;">
+              <div class="field-grid-2">
+                <input type="text" id="cardModeNewPaymentTitleName" placeholder="اسم البند الجديد">
+                <input type="number" id="cardModeNewPaymentTitlePrice" placeholder="السعر الافتراضي">
+              </div>
+              <button class="btn btn-outline btn-sm" style="margin-top:6px;width:100%;justify-content:center;" onclick="createCardModePaymentTitle()">➕ إنشاء البند دلوقتي</button>
+            </div>
+          </div>
+
+          <label class="modal-toggle-row">
             <input type="checkbox" id="cardModeBookCb" onchange="onCardModeTypeChange()"> 📖 سداد مذكرة
           </label>
-        </div>
-        <div class="field" id="cardModePaymentField" style="display:none;">
-          <label>بند السداد</label>
-          <select id="cardModePaymentTitle" onchange="onCardModePaymentTitleChange()">
-            <option value="">-- اختر البند --</option>
-            <option value="__new__">➕ إضافة بند جديد...</option>
-          </select>
-          <div id="cardModeNewPaymentTitleBox" style="display:none;margin-top:8px;">
-            <input type="text" id="cardModeNewPaymentTitleName" placeholder="اسم البند الجديد">
-            <input type="number" id="cardModeNewPaymentTitlePrice" placeholder="السعر الافتراضي" style="margin-top:6px;">
-            <button class="btn btn-outline btn-sm" style="margin-top:6px;width:100%;justify-content:center;" onclick="createCardModePaymentTitle()">➕ إنشاء البند دلوقتي</button>
+          <div id="cardModeBookField" style="display:none;padding-inline-start:29px;">
+            <div class="field-grid-2">
+              <div class="field" style="margin-bottom:0;">
+                <label>المذكرة</label>
+                <select id="cardModeBookSelect" onchange="fillCardModeBookAmount()">
+                  <option value="">-- اختر المذكرة --</option>
+                </select>
+              </div>
+              <div class="field" style="margin-bottom:0;">
+                <label>المبلغ المدفوع دلوقتي</label>
+                <input type="number" id="cardModeBookAmount" placeholder="المبلغ">
+              </div>
+            </div>
           </div>
-          <label style="margin-top:8px;">المبلغ اللي هيتسجّل مدفوع دلوقتي (سعر البند الكامل ثابت زي ما هو، ولو حطيت أقل هيتسجّل دفعة جزئية)</label>
-          <input type="number" id="cardModePaymentAmount" placeholder="المبلغ">
         </div>
-        <div class="field" id="cardModeBookField" style="display:none;">
-          <label>المذكرة</label>
-          <select id="cardModeBookSelect" onchange="fillCardModeBookAmount()">
-            <option value="">-- اختر المذكرة --</option>
-          </select>
-          <label style="margin-top:8px;">المبلغ اللي هيتسجّل مدفوع دلوقتي (سعر المذكرة الأصلي ثابت زي ما هو، ولو حطيت أقل هيتسجّل دفعة جزئية)</label>
-          <input type="number" id="cardModeBookAmount" placeholder="المبلغ">
-        </div>
+
         </div>
         <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:12px;" onclick="saveCardMode()">حفظ الوضع</button>
       </div>
@@ -1887,8 +1913,7 @@ async function openCardModeModal() {
   // الخلفية). النتيجة: كل مرة يتفتح المودال، الاستعادة كانت بترفض تشتغل خالص، فكل الحقول
   // بتفضل فاضية. الحل: نجهّز كل القيم الأول، وبعدين نظهر المودال آخر خطوة
   const isCenterAssistant = sessionStorage.getItem('isCenter') === 'true';
-  document.getElementById('cardModeInstructorLabel').style.display = isCenterAssistant ? 'block' : 'none';
-  document.getElementById('cardModeInstructorSelect').style.display = isCenterAssistant ? 'block' : 'none';
+  document.getElementById('cardModeInstructorField').style.display = isCenterAssistant ? '' : 'none';
   // ✅ (فِكس) دول كانوا بيتنادوا من غير await، فتحديد بند السداد/المذكرة المحفوظين كان ممكن
   // يفشل بصمت لو قوائمهم لسه ماتحمّلتش
   await Promise.all([loadPaymentTitlesForCardMode(), loadBooksForCardMode(), loadCardModeInstructors(isCenterAssistant)]);
@@ -2124,6 +2149,21 @@ function onReaderEnabledChange() {
   document.getElementById('cardModeSettingsBody').style.display = enabled ? 'block' : 'none';
 }
 
+// ✅ ساعة انتهاء (HH:MM) بتوقيت الجهاز نفسه ← عدد الدقايق المتبقية من دلوقتي. سالب/صفر
+// يعني الساعة المختارة فاتت بالفعل النهاردة (المستخدم لازم يختار وقت في المستقبل)
+function computeMinutesUntilTime(timeStr) {
+  const parts = timeStr.split(':');
+  const target = new Date();
+  target.setHours(Number(parts[0]), Number(parts[1]), 0, 0);
+  return Math.round((target.getTime() - Date.now()) / 60000);
+}
+
+// ✅ العكس: عدد ثواني متبقية من دلوقتي ← قيمة جاهزة لحقل <input type="time"> (الساعة الفعلية اللي هتنتهي فيها)
+function minutesFromNowToTimeInputValue(remainingSeconds) {
+  const target = new Date(Date.now() + remainingSeconds * 1000);
+  return String(target.getHours()).padStart(2, '0') + ':' + String(target.getMinutes()).padStart(2, '0');
+}
+
 async function saveCardMode() {
   const readerEnabled = document.getElementById('cardReaderEnabledCb').checked;
 
@@ -2145,17 +2185,24 @@ async function saveCardMode() {
     return;
   }
 
+  const attendanceChecked = document.getElementById('cardModeAttendance').checked;
   const paymentChecked = document.getElementById('cardModePaymentCb').checked;
   const bookChecked = document.getElementById('cardModeBookCb').checked;
-  const durationMinutes = document.getElementById('cardModeDurationInput').value;
 
-  if (!durationMinutes || Number(durationMinutes) <= 0) { showToast('⚠️ حدد مدة صحيحة بالدقايق', 'error'); return; }
-
-  const modes = ['attendance']; // الحضور دايماً مفعّل
+  const modes = [];
+  if (attendanceChecked) modes.push('attendance');
   if (paymentChecked) modes.push('payment');
   if (bookChecked) modes.push('book_payment');
+  if (modes.length === 0) { showToast('⚠️ اختاري وضع واحد على الأقل', 'error'); return; }
 
-  const body = { isEnabled: true, modes, durationMinutes: Number(durationMinutes) };
+  // ✅ ساعة انتهاء محددة بدل مدة بالدقايق — بنحسب الفرق بالدقايق من دلوقتي لحد الساعة
+  // المختارة (بتوقيت الجهاز نفسه، زي ما هو معروض في حقل الوقت)، ولازم تكون في المستقبل
+  const endTimeStr = document.getElementById('cardModeEndTime').value;
+  if (!endTimeStr) { showToast('⚠️ حددي وقت انتهاء الحصة', 'error'); return; }
+  const durationMinutes = computeMinutesUntilTime(endTimeStr);
+  if (!durationMinutes || durationMinutes <= 0) { showToast('⚠️ وقت الانتهاء لازم يكون بعد الوقت الحالي', 'error'); return; }
+
+  const body = { isEnabled: true, modes, durationMinutes };
   if (paymentChecked) {
     body.paymentTitle = document.getElementById('cardModePaymentTitle').value;
     body.paymentAmount = document.getElementById('cardModePaymentAmount').value;
@@ -2184,11 +2231,6 @@ async function saveCardMode() {
     const newSessionLabel = document.getElementById('cardModeNewSessionLabel').value.trim();
     if (!newSessionLabel) { showToast('⚠️ حدد اسم الحصة الجديدة', 'error'); return; }
     body.newSessionLabel = newSessionLabel;
-    body.newSessionThresholdMinutes = Number(document.getElementById('cardModeNewSessionThreshold').value) || 30;
-    const cardModeSessionDurationVal = document.getElementById('cardModeNewSessionDuration').value;
-    if (cardModeSessionDurationVal && Number(cardModeSessionDurationVal) > 0) {
-      body.newSessionDurationMinutes = Number(cardModeSessionDurationVal);
-    }
   } else {
     body.sessionId = Number(sessionValue);
   }
@@ -2268,11 +2310,12 @@ async function refreshCardModeStatus() {
       await restoreCardModeContextSelection(result.activeInstructorNameId, result.activeGroupName, result.activeSessionId);
     }
 
-    // ✅ (فِكس، نفس فِكس dashboard.html) استعادة دفع/مذكرة/مدتهم — كانوا بيرجعوا فاضيين
-    // دايمًا لما المودال يتفتح تاني حتى لو الوضع ده شغّال فعلاً
+    // ✅ (فِكس، نفس فِكس dashboard.html) استعادة الحضور/دفع/مذكرة ووقت الانتهاء — كانوا
+    // بيرجعوا فاضيين دايمًا لما المودال يتفتح تاني حتى لو الوضع ده شغّال فعلاً
+    document.getElementById('cardModeAttendance').checked = modes.includes('attendance');
     if (result.remainingSeconds != null) {
-      const durationInput = document.getElementById('cardModeDurationInput');
-      if (durationInput) durationInput.value = Math.max(1, Math.round(result.remainingSeconds / 60)) || durationInput.value;
+      const endTimeInput = document.getElementById('cardModeEndTime');
+      if (endTimeInput) endTimeInput.value = minutesFromNowToTimeInputValue(result.remainingSeconds);
     }
     document.getElementById('cardModePaymentCb').checked = modes.includes('payment');
     document.getElementById('cardModeBookCb').checked = modes.includes('book_payment');
