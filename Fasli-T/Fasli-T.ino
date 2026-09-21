@@ -480,6 +480,17 @@ void startCaptivePortal() {
 void tryBackgroundReconnect() {
   if (wifi_ssid.length() == 0) return;
 
+  // ✅ (فِكس: صفحة الإعداد بتتأخر جداً أو مابتفتحش لوحدها) لو فيه جهاز متصل بنقطة الوصول
+  // دلوقتي (المستخدم بيحاول يظبط الإعدادات فعلاً)، منحاولش نتصل بالشبكة القديمة خالص —
+  // WiFi.begin() بيجبر نقطة الوصول تتنقل لقناة (channel) الشبكة اللي بيحاول يتصل بيها، وده
+  // بيفصل أي جهاز متصل بالـAP فجأة لحد ما يرجع يتصل تاني، وده بالظبط اللي كان بيخلي صفحة
+  // الإعداد تتأخر جداً أو ماتفتحش لوحدها لو المستخدم بيحاول يظبطها في نفس لحظة محاولة
+  // الاتصال الخلفية دي (بتتكرر كل 30 ثانية طول ما وضع الإعداد شغّال)
+  if (WiFi.softAPgetStationNum() > 0) {
+    Serial.println("⏸️ فيه جهاز متصل بنقطة الوصول دلوقتي — تأجيل محاولة الاتصال الخلفية");
+    return;
+  }
+
   Serial.println("🔄 محاولة اتصال في الخلفية بالشبكة المحفوظة...");
   WiFi.begin(wifi_ssid.c_str(), wifi_password.c_str());
 
@@ -509,6 +520,27 @@ void tryBackgroundReconnect() {
 }
 
 // =========================================================
+// 🔁 محاولة الاتصال الخلفية — في تاسك منفصلة (النواة 0) مش جوه loop() نفسها
+// =========================================================
+// ✅ (فِكس: صفحة الإعداد بتتأخر جداً أو مابتفتحش لوحدها) tryBackgroundReconnect() كانت
+// بتتنادى مباشرة جوه loop() (النواة 1، نفس اللوب المسؤولة عن الرد على DNS/الويب سيرفر)،
+// وهي بتعمل WiFi.begin() وتستنى لحد 8 ثواني (blocking) قبل ما ترجع — يعني طول الـ8 ثواني
+// دول، dnsServer.processNextRequest() وwebServer.handleClient() مبيتناداش خالص، فأي طلب
+// فعلي من موبايل المستخدم (بحث DNS أو فتح صفحة) كان بيستنى بلا رد لحد ما المحاولة تخلص.
+// بقت دلوقتي في تاسك مستقلة تماماً (زي uploadTask/pingTask بالظبط) عشان loop() تفضل
+// بترد فورًا على أي طلب طول الوقت، بغض النظر عن حالة محاولة الاتصال الخلفية
+// =========================================================
+void backgroundReconnectTask(void * pvParameters) {
+  while (true) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    if (!ap_mode_active) continue;
+    if (millis() - lastBackgroundRetry < BACKGROUND_RETRY_INTERVAL) continue;
+    lastBackgroundRetry = millis();
+    tryBackgroundReconnect();
+  }
+}
+
+// =========================================================
 // 🔁 النواة 1: قراءة الكروت
 // =========================================================
 void loop() {
@@ -518,12 +550,6 @@ void loop() {
   if (ap_mode_active) {
     dnsServer.processNextRequest();
     webServer.handleClient();
-
-    if (millis() - lastBackgroundRetry > BACKGROUND_RETRY_INTERVAL) {
-      lastBackgroundRetry = millis();
-      tryBackgroundReconnect();
-    }
-
     delay(2);
     return;
   }
@@ -909,6 +935,10 @@ void setup() {
   // نفس نوع الطلب اللي كان بيحصل جوه PingTask، فمكدس 8192 بايت بنفس المنطق (هامش أمان كافي
   // لطلب HTTPS + تحليل JSON، بدل المخاطرة بـ stack overflow تاني زي اللي حصل قبل كده)
   xTaskCreatePinnedToCore(modeStatusTask, "ModeStatusTask", 8192, NULL, 1, NULL, 0);
+  // ✅ 8192 مش 4096 — نفس سبب pingTask بالظبط: tryBackgroundReconnect() بينادي
+  // fetchDeviceModeStatus() لما ينجح (طلب HTTPS + StaticJsonDocument<512> + JsonArray)،
+  // ومكدس أصغر سبب "stack overflow" فعلي قبل كده مع نفس نوع النداء ده بالظبط
+  xTaskCreatePinnedToCore(backgroundReconnectTask, "BgReconnectTask", 8192, NULL, 1, NULL, 0);
 
   Serial.println("\n✅ فَصلي - جهاز الحضور جاهز.");
   Serial.println("📡 أوامر Serial (احتياطية): GET_CONFIG, SET_CONFIG:SSID|PASS, RESET_CONFIG, PING");
