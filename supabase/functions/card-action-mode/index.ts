@@ -102,18 +102,23 @@ async function handleGet(supabase: any, tokenClientId: string) {
   const idleMs = Date.now() - new Date(mode.set_at || mode.updated_at).getTime();
   const remainingSeconds = Math.max(0, Math.round((durationMs - idleMs) / 1000));
 
-  const onlyAttendance = mode.attendance_enabled && !mode.payment_enabled && !mode.book_payment_enabled;
-  if (onlyAttendance) {
-    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], isEnabled: true, pendingRegistration: false, remainingSeconds, ...activeContextFields }),
+  // ✅ (فِكس) وقت الانتهاء عدّى؟ كل الأوضاع بتتوقف بالكامل (is_enabled:false) — مش رجوع
+  // لـ"حضور بس" زي قبل كده. الرجوع لحضور بس كان منطقي وقت ما الحضور كان مفعّل إجباريًا
+  // دايمًا، لكن دلوقتي الحضور اختياري زي أي وضع تاني، فمفيش سبب يتفضّل هو بس شغّال بعد
+  // ما وقت الانتهاء المختار (لكل الأوضاع مع بعض) يخلص — ده كان بيضلّل المستخدم إنه لسه
+  // فيه وضع شغّال (حضور) حتى لو أصلاً ماكانش مختار حضور من الأول
+  if (idleMs > durationMs) {
+    await supabase.from("card_action_mode").update({
+      is_enabled: false, updated_at: new Date().toISOString(),
+      active_instructor_name_id: null, active_group_name: null, active_session_id: null, active_session_label: null,
+    }).eq("teacher_id", tokenClientId);
+    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: [], isEnabled: false, pendingRegistration: false, autoStopped: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  if (idleMs > durationMs) {
-    await supabase.from("card_action_mode").update({
-      attendance_enabled: true, payment_enabled: false, book_payment_enabled: false,
-      updated_at: new Date().toISOString(),
-    }).eq("teacher_id", tokenClientId);
-    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], autoReverted: true, isEnabled: true, pendingRegistration: false, remainingSeconds: 0, ...activeContextFields }),
+  const onlyAttendance = mode.attendance_enabled && !mode.payment_enabled && !mode.book_payment_enabled;
+  if (onlyAttendance) {
+    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], isEnabled: true, pendingRegistration: false, remainingSeconds, ...activeContextFields }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
