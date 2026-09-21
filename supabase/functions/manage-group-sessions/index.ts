@@ -4,7 +4,7 @@ import { corsHeaders, verifyToken, authErrorResponse, requireAssistantPermission
 // الحصص الأسبوعي المتكرر القديم (group_sessions) اللي اتلغى بالكامل.
 // كل حصة بتتنشئ فعلياً لحظة بدء تسجيل الحضور (قارئ كروت أو يدوي)، وبتتسجّل
 // بتاريخ إنشائها، ومتاحة للاختيار في تسجيل الحضور بس في نفس يوم إنشائها.
-// action: create | listToday | updateThreshold | history | rosterForSession | delete
+// action: create | listToday | updateThreshold | history | rosterForSession | delete | endNow
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /** تاريخ النهاردة بتوقيت القاهرة كـ YYYY-MM-DD (نفس المعيار المستخدم في باقي المشروع لمقارنة أعمدة date) */
@@ -171,21 +171,20 @@ Deno.serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ✅ حذف حصة — بس لو من نفس اليوم ومفيهاش حضور مسجّل عليها (حماية من فقدان بيانات)
+    // ✅ حذف حصة — من أي يوم (سجل الحصص بيعرض كل الأيام، مش النهاردة بس)، بس لازم تكون
+    // مفيهاش حضور مسجّل عليها خالص (حماية من فقدان بيانات حقيقية — لو فيها حضور، مينفعش تتحذف
+    // مهما كان تاريخها). قيد "نفس اليوم بس" القديم كان بيمنع تنضيف حصص فاضية غلط من أيام سابقة
+    // من غير أي فايدة أمان حقيقية إضافية عن قيد "مفيهاش حضور" اللي هو الحماية الفعلية
     if (action === "delete") {
       const { sessionId } = body;
       if (!sessionId) {
         return new Response(JSON.stringify({ success: false, message: "⚠️ sessionId مطلوب" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      const { data: existing } = await supabase.from("attendance_sessions").select("teacher_id, session_date").eq("id", sessionId).maybeSingle();
+      const { data: existing } = await supabase.from("attendance_sessions").select("teacher_id").eq("id", sessionId).maybeSingle();
       if (!existing || existing.teacher_id !== tokenClientId) {
         return new Response(JSON.stringify({ success: false, message: "⛔ غير مصرح لك بحذف هذه الحصة" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (existing.session_date !== today) {
-        return new Response(JSON.stringify({ success: false, message: "⚠️ لا يمكن حذف حصة من يوم سابق" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       const { count } = await supabase.from("attendance").select("id", { count: "exact", head: true }).eq("session_id", sessionId);
       if (count && count > 0) {
@@ -195,6 +194,50 @@ Deno.serve(async (req) => {
       const { error } = await supabase.from("attendance_sessions").delete().eq("id", sessionId);
       if (error) throw new Error(error.message);
       return new Response(JSON.stringify({ success: true, message: "✅ تم حذف الحصة" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ✅ إنهاء الحصة فورًا (قبل ما مدتها/مهلة احتساب غيابها تخلص طبيعيًا) — بيقفل باب تسجيل
+    // حضور جديد عليها على طول (record-attendance بيتحقق من ended_at)، وبينادي فحص الغياب
+    // فورًا لنفس المدرس عشان اللي معملش حضور يتحسب غايب دلوقتي، مش لما الفحص الدوري يجي
+    if (action === "endNow") {
+      const { sessionId } = body;
+      if (!sessionId) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ sessionId مطلوب" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { data: existing } = await supabase.from("attendance_sessions").select("teacher_id, session_date, ended_at").eq("id", sessionId).maybeSingle();
+      if (!existing || existing.teacher_id !== tokenClientId) {
+        return new Response(JSON.stringify({ success: false, message: "⛔ غير مصرح لك بإنهاء هذه الحصة" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (existing.session_date !== today) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ الحصة دي مش من النهاردة أصلاً" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (existing.ended_at) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ الحصة دي متوقفة بالفعل" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { error } = await supabase.from("attendance_sessions").update({ ended_at: new Date().toISOString() }).eq("id", sessionId);
+      if (error) throw new Error(error.message);
+
+      // ✅ نستدعي فحص الغياب فورًا بنفس توكن المستخدم (نفس مسار "فتح لوحة التحكم" العادي،
+      // بس دلوقتي مش لازم نستنى — الحصة دي بقت مؤهلة تتحسب لأن ended_at بقى مضبوط)
+      try {
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/check-session-absences`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: req.headers.get("Authorization") || "",
+            // ✅ بوابة Supabase بترفض أي طلب من غير الهيدر ده، حتى لو النداء جوّاني من فانكشن لفانكشن
+            apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+          },
+          body: "{}",
+        });
+      } catch (_e) { /* فشل الفحص الفوري مش لازم يوقف نجاح إنهاء الحصة — الفحص الدوري هيلحقها لاحقًا */ }
+
+      return new Response(JSON.stringify({ success: true, message: "✅ تم إنهاء الحصة الآن" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

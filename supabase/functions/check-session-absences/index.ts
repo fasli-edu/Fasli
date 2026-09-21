@@ -101,7 +101,9 @@ async function processTeacherAbsences(
     const elapsedMinutes = (nowMs - sessionStart.getTime()) / 60000;
 
     // ✅ الحصة دي وقتها فات بالمدة المحددة ليها هي بالذات؟ لو لأ، نتخطاها (لسه بدري نحكم على غياب حد)
-    if (elapsedMinutes < thresholdMinutes) continue;
+    // — إلا لو المدرس/المساعد أنهاها يدويًا (ended_at) قبل ما المهلة تخلص طبيعيًا، وده لازم
+    // يحتسب الغياب فورًا بغض النظر عن الوقت الفعلي المنقضي
+    if (elapsedMinutes < thresholdMinutes && !session.ended_at) continue;
 
     // ✅ (طلب) دفعة 44: كان بيجيب بس الطلاب اللي المجموعة دي أساسية عندهم — الطلاب المربوطين
     // بيها كمجموعة ثانوية (تعدد مواد/مدرسين عن طريق student_group_links) مكانوش بيتحسبلهم

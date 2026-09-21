@@ -199,6 +199,9 @@ serve(async (req) => {
       // تسجيل حضور (قارئ أو يدوي) بعد ما المهلة دي تخلص — نفس الحساب المستخدم في
       // check-session-absences بالظبط
       sessionCreatedAt: string | null; sessionThresholdMinutes: number | null;
+      // ✅ لو المدرس/المساعد أنهى الحصة يدويًا (manage-group-sessions action=endNow) قبل ما
+      // مهلتها الطبيعية تخلص، لازم نرفض أي تسجيل حضور عليها فورًا بغض النظر عن الوقت المنقضي
+      sessionEndedAt: string | null;
     } | null = null;
 
     // ✅ مصدر الطلب: إما جهاز قارئ كروت (بسر خاص بالمدرس) أو مستخدم مسجل دخول عادي (توكن)
@@ -285,13 +288,15 @@ serve(async (req) => {
         // طول ما هو مفعّل، حتى لو فات على بداية الحصة ساعات
         let sessionCreatedAt: string | null = null;
         let sessionThresholdMinutes: number | null = null;
+        let sessionEndedAt: string | null = null;
         if (cardMode.active_session_id) {
           const { data: activeSessionRow } = await supabase
-            .from("attendance_sessions").select("created_at, absence_threshold_minutes")
+            .from("attendance_sessions").select("created_at, absence_threshold_minutes, ended_at")
             .eq("id", cardMode.active_session_id).maybeSingle();
           if (activeSessionRow) {
             sessionCreatedAt = activeSessionRow.created_at;
             sessionThresholdMinutes = activeSessionRow.absence_threshold_minutes;
+            sessionEndedAt = activeSessionRow.ended_at;
           }
         }
         centerActiveContext = {
@@ -300,7 +305,7 @@ serve(async (req) => {
           groupName: cardMode.active_group_name,
           sessionId: cardMode.active_session_id || null,
           sessionLabel: cardMode.active_session_label || null,
-          sessionCreatedAt, sessionThresholdMinutes,
+          sessionCreatedAt, sessionThresholdMinutes, sessionEndedAt,
         };
       }
 
@@ -399,19 +404,21 @@ serve(async (req) => {
         let validSessionId: number | null = null;
         let sessionCreatedAt: string | null = null;
         let sessionThresholdMinutes: number | null = null;
+        let sessionEndedAt: string | null = null;
         const cairoNowForSession = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
         const todayDateStr = cairoNowForSession.toISOString().split("T")[0];
 
         if (sessionId) {
           const { data: sessionRow } = await supabase
             .from("attendance_sessions")
-            .select("id, session_label, group_name, teacher_id, session_date, created_at, absence_threshold_minutes")
+            .select("id, session_label, group_name, teacher_id, session_date, created_at, absence_threshold_minutes, ended_at")
             .eq("id", sessionId).maybeSingle();
           if (sessionRow && sessionRow.teacher_id === clientId && sessionRow.group_name === groupName && sessionRow.session_date === todayDateStr) {
             validSessionId = sessionRow.id;
             sessionLabel = sessionRow.session_label;
             sessionCreatedAt = sessionRow.created_at;
             sessionThresholdMinutes = sessionRow.absence_threshold_minutes;
+            sessionEndedAt = sessionRow.ended_at;
           }
         } else if (newSessionLabel) {
           // ✅ (طلب) إنشاء الحصة الجديدة واستخدامها فوراً في نفس هذا الطلب — بدل ما تتنشئ في
@@ -445,7 +452,7 @@ serve(async (req) => {
           groupName: groupName,
           sessionId: validSessionId,
           sessionLabel: sessionLabel,
-          sessionCreatedAt, sessionThresholdMinutes,
+          sessionCreatedAt, sessionThresholdMinutes, sessionEndedAt,
         };
       }
     }
@@ -485,6 +492,14 @@ serve(async (req) => {
     // الغياب بتاعة الحصة تخلص، بنفس الحساب المستخدم في احتساب الغياب التلقائي بالظبط
     // (elapsed = الوقت من إنشاء الحصة). قبل كده كان ممكن يتسجل حضور "حاضر" في أي وقت
     // طول ما القارئ مفعّل أو شاشة الحضور اليدوي مفتوحة، حتى لو فات على بداية الحصة ساعات
+    // ✅ أو لو الحصة اتقفلت يدويًا (manage-group-sessions action=endNow) — ترفض فورًا بغض
+    // النظر عن الوقت المنقضي الفعلي
+    if (centerActiveContext?.sessionEndedAt) {
+      return new Response(
+        JSON.stringify({ success: false, message: "⛔ الحصة دي اتقفلت يدويًا", code: "SESSION_THRESHOLD_PASSED" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     if (centerActiveContext?.sessionCreatedAt && centerActiveContext?.sessionThresholdMinutes != null) {
       const elapsedMinutes = (Date.now() - new Date(centerActiveContext.sessionCreatedAt).getTime()) / 60000;
       if (elapsedMinutes >= centerActiveContext.sessionThresholdMinutes) {
