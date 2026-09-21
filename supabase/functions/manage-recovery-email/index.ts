@@ -45,11 +45,19 @@ Deno.serve(async (req) => {
     const supabase = supabaseAdmin();
 
     if (body.action === "get") {
-      const { data } = await supabase.from(table).select("recovery_email, recovery_email_verified").eq(column, value).maybeSingle();
+      // ✅ (أمان حرج) بنرجّع mustChangePassword كمان هنا — التوكن المخزّن محليًا (جلسة "تذكرني"
+      // بعد إعادة فتح التطبيق) بيفضل صالح حتى لو الحساب لسه معلّق عليه خطوة إجبارية (تغيير كلمة
+      // مرور أول دخول)، لأن الصلاحية دي جزء من صف قاعدة البيانات مش من التوكن نفسه. login.html
+      // بيستخدم القيمة دي عشان يمنع الدخول التلقائي المباشر للوحة التحكم من جلسة متذكَّرة لسه
+      // معلّق عليها خطوة إجبارية لم تكتمل.
+      const { data } = await supabase.from(table)
+        .select("recovery_email, recovery_email_verified, must_change_password")
+        .eq(column, value).maybeSingle();
       return jsonResponse({
         success: true,
         recoveryEmail: data?.recovery_email || null,
         recoveryEmailVerified: data?.recovery_email_verified === true,
+        mustChangePassword: data?.must_change_password === true,
       });
     }
 

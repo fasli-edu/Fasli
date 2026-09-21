@@ -1183,9 +1183,40 @@
         if (payload?.app_metadata?.name) backfill('teacherName', payload.app_metadata.name);
       }
 
-      if (role === 'teacher') {
+      if (role === 'teacher' && clientId) {
+        // ✅ (أمان حرج) قبل الدخول التلقائي من جلسة "تذكرني" مسترجعة، لازم نتأكد إن الحساب
+        // مالوش خطوة إجبارية لسه معلّقة (تغيير كلمة مرور أول دخول / تأكيد إيميل الاسترجاع).
+        // التوكن نفسه بيفضل سليم تمامًا حتى لو الخطوتين دول لسه معلّقتين — الصلاحية دي متسجّلة
+        // في صف قاعدة البيانات مش في التوكن. من غير الفحص ده: قفل التطبيق أثناء change-password.html
+        // أو verify-recovery-email.html (قبل ما المستخدم يكمّل أي منهم) وفتحه تاني كان بيوصّل
+        // المستخدم للوحة التحكم مباشرة من هنا، متجاوزًا الخطوة الإجبارية للأبد — لأن الصفحتين
+        // دول مش بيتفتحوا إلا عن طريق تسجيل دخول تفاعلي فعلي (اللي بيسأل /login من جديد ويرجّع
+        // forceChange/needsRecoveryEmail محدّثين)، مش من مسار الاسترجاع التلقائي ده.
+        let pendingMandatoryStep = false;
+        try {
+          const statusRes = await fetch(PROJECT_URL + '/functions/v1/manage-recovery-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ action: 'get' }),
+          });
+          const statusData = await statusRes.json();
+          if (statusData.success && (statusData.mustChangePassword || statusData.recoveryEmailVerified === false)) {
+            pendingMandatoryStep = true;
+          }
+        } catch (e) { /* فشل الفحص: نكمل عادي بدل ما نعلّق المستخدم على صفحة الدخول للأبد */ }
+
+        if (pendingMandatoryStep) {
+          // ✅ منمنعش الدخول بس نمسح الجلسة المسترجعة (عشان دخول مباشر بـURL للوحة التحكم
+          // مايعديش بنفس التوكن) ونسيب المستخدم يدخل تاني بالفورم العادي، اللي هيوجّهه صح
+          // لأي خطوة إجبارية باقية بنفس منطق handleLogin/redirectUser المُختبَر أصلاً
+          sessionStorage.clear();
+          const usernameField = document.getElementById('username');
+          if (usernameField) usernameField.value = clientId;
+          return;
+        }
+
         if (clientId === 'Fasli-admin') { window.location.href = 'admin-teachers.html'; return; }
-        else if (clientId) { window.location.href = 'dashboard.html'; return; }
+        window.location.href = 'dashboard.html'; return;
       } else if (role === 'assistant' && assistantId) {
         window.location.href = 'assistant-dashboard.html'; return;
       } else if (role === 'parent' && parentPhone) {
