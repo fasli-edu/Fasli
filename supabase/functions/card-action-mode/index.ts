@@ -84,9 +84,20 @@ async function handleGet(supabase: any, tokenClientId: string) {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
+  // ✅ (فِكس) الفرعين تحت (حضور بس / رجوع تلقائي لحضور بس بعد انتهاء المدة) كانا بيرجّعوا رد
+  // من غير active*context خالص — يعني لما المستخدم يفتح المودال تاني قبل ما يعدّل، الواجهة
+  // (restoreCardModeContextSelection) ماكانتش بتلاقي activeGroupName فترجع القوائم فاضية،
+  // فيضطر يختار المدرس/المجموعة/الحصة من الأول تاني في أكتر حالة شائعة (حضور بس، بلا دفع/مذكرة)
+  const activeContextFields = {
+    activeInstructorNameId: mode.active_instructor_name_id || null,
+    activeGroupName: mode.active_group_name || null,
+    activeSessionId: mode.active_session_id || null,
+    activeSessionLabel: mode.active_session_label || null,
+  };
+
   const onlyAttendance = mode.attendance_enabled && !mode.payment_enabled && !mode.book_payment_enabled;
   if (onlyAttendance) {
-    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], isEnabled: true, pendingRegistration: false }),
+    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], isEnabled: true, pendingRegistration: false, ...activeContextFields }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -97,7 +108,7 @@ async function handleGet(supabase: any, tokenClientId: string) {
       attendance_enabled: true, payment_enabled: false, book_payment_enabled: false,
       updated_at: new Date().toISOString(),
     }).eq("teacher_id", tokenClientId);
-    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], autoReverted: true, isEnabled: true, pendingRegistration: false }),
+    return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: ["attendance"], autoReverted: true, isEnabled: true, pendingRegistration: false, ...activeContextFields }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
@@ -111,11 +122,7 @@ async function handleGet(supabase: any, tokenClientId: string) {
     paymentTitle: mode.payment_title, paymentAmount: mode.payment_amount,
     bookId: mode.book_id, bookAmount: mode.book_amount, setBy: mode.set_by,
     remainingSeconds: Math.max(0, Math.round((durationMs - idleMs) / 1000)),
-    // ✅ Aug 2026 (Phase I): سياق الجلسة الحالية (مدرس/مجموعة/حصة) — بيبقى معبّى بس لحسابات السنتر
-    activeInstructorNameId: mode.active_instructor_name_id || null,
-    activeGroupName: mode.active_group_name || null,
-    activeSessionId: mode.active_session_id || null,
-    activeSessionLabel: mode.active_session_label || null,
+    ...activeContextFields,
   }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
