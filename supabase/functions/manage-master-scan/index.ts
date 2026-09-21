@@ -28,20 +28,33 @@ Deno.serve(async (req) => {
 
     const { action } = await req.json();
 
-    if (action === "start") {
-      await supabase.from("master_scan_mode").update({ is_active: true, last_scanned_uid: null }).eq("id", 1);
-      return new Response(JSON.stringify({ success: true, message: "✅ وضع الاستقبال مفعّل — مرّغ الكروت على البورد" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    // ✅ (أمان/وظيفي حرج) master_scan_mode صف واحد بس (singleton)، بس عموده id "generated
+    // always as identity" — مفيش ضمان إنه هيكون id=1 بالظبط، وفعليًا مكانش موجود خالص في
+    // القاعدة الجديدة بعد الترحيل. الكود القديم كان بيفترض id=1 صراحة عن طريق .eq("id", 1) —
+    // لو الصف ده مش موجود، "start" كان بيرجع نجاح كاذب (تحديث لصفر صفوف، من غير أي error) من
+    // غير ما يفعّل أي حاجة فعليًا في القاعدة، وأول استعلام "status" بعدها كان بيرجّع
+    // isActive:false تاني على طول — يعني وضع الاستقبال كان بيظهر إنه "اشتغل" لحظة وبعدها
+    // "بيفصل" فورًا، من غير أي كارت اتسجّل فعليًا في أي وقت.
+    if (action === "start" || action === "stop") {
+      const { data: existingMode } = await supabase.from("master_scan_mode").select("id").limit(1).maybeSingle();
+      const isActive = action === "start";
+      const updates: Record<string, unknown> = { is_active: isActive };
+      if (isActive) updates.last_scanned_uid = null;
 
-    if (action === "stop") {
-      await supabase.from("master_scan_mode").update({ is_active: false }).eq("id", 1);
-      return new Response(JSON.stringify({ success: true, message: "✅ تم إيقاف وضع الاستقبال" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (existingMode) {
+        await supabase.from("master_scan_mode").update(updates).eq("id", existingMode.id);
+      } else if (isActive) {
+        await supabase.from("master_scan_mode").insert(updates);
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: isActive ? "✅ وضع الاستقبال مفعّل — مرّغ الكروت على البورد" : "✅ تم إيقاف وضع الاستقبال",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (action === "status") {
-      const { data: mode } = await supabase.from("master_scan_mode").select("*").eq("id", 1).maybeSingle();
+      const { data: mode } = await supabase.from("master_scan_mode").select("is_active, last_scanned_uid").limit(1).maybeSingle();
       const { count } = await supabase.from("system_cards").select("id", { count: "exact", head: true }).eq("status", "in_stock");
       return new Response(JSON.stringify({
         success: true, isActive: !!mode?.is_active, lastScannedUid: mode?.last_scanned_uid || null, inStockCount: count || 0,

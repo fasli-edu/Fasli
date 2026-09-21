@@ -23,15 +23,20 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ✅ (أمان/وظيفي حرج) master_device و master_scan_mode صفوف واحدة بس (singleton)، بس
+    // عمودهم id "generated always as identity" — مفيش ضمان إنهم id=1 بالظبط. البحث بـ
+    // .eq("id", 1) كان بيرجع "مفيش صف" لو الصف الحقيقي معاه id تاني، فأي كارت كان بيتمرّغ
+    // كان بيترفض بـ"سر الجهاز غير صحيح" أو يتجاهل بهدوء كأن وضع الاستقبال متوقف، حتى لو
+    // كانا الاتنين مضبوطين صح فعليًا في القاعدة
     const { data: device, error: deviceError } = await supabase
-      .from("master_device").select("device_secret").eq("id", 1).maybeSingle();
+      .from("master_device").select("device_secret").limit(1).maybeSingle();
 
     if (deviceError || !device || device.device_secret !== deviceSecret) {
       return new Response(JSON.stringify({ success: false, message: "⛔ سر الجهاز غير صحيح" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { data: scanMode } = await supabase.from("master_scan_mode").select("is_active").eq("id", 1).maybeSingle();
+    const { data: scanMode } = await supabase.from("master_scan_mode").select("id, is_active").limit(1).maybeSingle();
     if (!scanMode?.is_active) {
       // ✅ مش في وضع استقبال، نتجاهل الكارت بهدوء (البورد ممكن يفضل شغّال حتى لو مفيش استقبال دلوقتي)
       return new Response(JSON.stringify({ success: true, ignored: true }),
@@ -44,7 +49,7 @@ serve(async (req) => {
       { onConflict: "card_uid", ignoreDuplicates: true }
     );
 
-    await supabase.from("master_scan_mode").update({ last_scanned_uid: uid, last_scanned_at: new Date().toISOString() }).eq("id", 1);
+    await supabase.from("master_scan_mode").update({ last_scanned_uid: uid, last_scanned_at: new Date().toISOString() }).eq("id", scanMode.id);
 
     return new Response(JSON.stringify({ success: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
