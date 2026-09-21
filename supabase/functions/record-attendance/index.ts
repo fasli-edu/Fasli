@@ -211,8 +211,14 @@ serve(async (req) => {
 
       // ✅ لو المدرس/المساعد فاتح وضع "قراءة كارت" في قسم إضافة طالب أو ربط كارت دلوقتي،
       // أي كارت يتمرّغ في الوقت ده لازم يتجاهل تسجيل الحضور خالص — هو بيتفحص بس، مش بيحضر فعلياً
+      // ✅ (فِكس) الاستعلام ده كان مالوش .is("registered_card_uid", null) زي باقي الأماكن اللي
+      // بتفحص "هل فيه طلب تسجيل كارت معلّق فعلاً" (card-action-mode/submit-rfid-scan) — يعني
+      // كان بيلاقي حتى الطلبات اللي خلصت بالفعل (registered_card_uid اتحط عليها قيمة من
+      // submit-rfid-scan نفسها، اللي بتـUPDATE الصف مش بتمسحه)، وطول ما ده حصل قبل أقل من 20
+      // ثانية، أي كارت حقيقي يتمرّغ لتسجيل حضور أو دفع كان بيتجاهل بالغلط وكأنه لسه في وضع فحص
       const { data: activeSession } = await supabase
-        .from("pending_card_registrations").select("id, requested_at").eq("teacher_id", clientId).maybeSingle();
+        .from("pending_card_registrations").select("id, requested_at")
+        .eq("teacher_id", clientId).is("registered_card_uid", null).maybeSingle();
 
       // ✅ بنحسب الفرق بالثواني، عشان نضمن الحماية تفضل شغّالة حتى لو الواجهة نضّفت الصف بسرعة
       // (فرق التوقيت بين الطلبين اللي بيبعتهم البورد ممكن ياخد كذا ثانية بسبب زمن استجابة الشبكة)
