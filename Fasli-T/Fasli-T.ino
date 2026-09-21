@@ -5,7 +5,8 @@
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <WebServer.h>
-#include <DNSServer.h>
+#include <WiFiUdp.h>
+#include <string.h>
 
 // =========================================================
 // ⚙️ إعدادات الشبكة ونظام فَصلي
@@ -31,7 +32,6 @@ const char* DEVICE_SECRET = "9dea4d628409577f207043e6e0ce70a3"; // ⚠️ قدي
 const char* AP_SSID_PREFIX = "Fasli-Setup";
 const char* AP_PASSWORD = "fasli1234";
 const byte DNS_PORT = 53;
-DNSServer dnsServer;
 WebServer webServer(80);
 bool ap_mode_active = false;
 
@@ -431,6 +431,92 @@ void handleNotFound() {
   webServer.send(302, "text/plain", "");
 }
 
+// =========================================================
+// 🌐 (فِكس أعمق: صفحة الإعداد مش بتفتح لوحدها على تابلت أندرويد سامسونج تحديدًا) دي إن إس
+// مخصّصة مكتوبة يدويًا بدل مكتبة DNSServer الجاهزة. المكتبة الجاهزة بترد على أي استعلام —
+// حتى استعلامات AAAA (IPv6) — بنفس رد نوع A، وده رد غير صحيح تقنيًا لاستعلام من نوع مختلف؛
+// بعض الأجهزة (زي ما لاحظنا مع تابلت سامسونج معيّن) بترفض الرد الغلط ده أو تستنى timeout
+// بدل ما ترجع فورًا للـIPv4 اللي أصلاً معاها من رد A سابق، وده كان بيأخّر أو يوقف فحص
+// الاتصال بتاع الموبايل قبل ما يوصلنا خالص. النسخة دي:
+//   - استعلام من نوع A: بترد بعنوان الجهاز الحقيقي (زي المكتبة الجاهزة بالظبط)
+//   - أي استعلام تاني (خصوصًا AAAA): بترد فورًا بـNXDOMAIN (مفيش سجل) صراحة، عشان أي جهاز
+//     يقدر يكمّل فورًا بدل ما ينتظر
+// =========================================================
+WiFiUDP dnsUdp;
+IPAddress dnsResolveIP;
+
+void startCustomDnsServer(IPAddress resolveIP) {
+  dnsResolveIP = resolveIP;
+  dnsUdp.begin(DNS_PORT);
+}
+
+void stopCustomDnsServer() {
+  dnsUdp.stop();
+}
+
+void processCustomDnsRequests() {
+  int packetSize = dnsUdp.parsePacket();
+  if (packetSize <= 0) return;
+
+  const int MAX_DNS_PACKET = 512;
+  if (packetSize > MAX_DNS_PACKET) packetSize = MAX_DNS_PACKET;
+  uint8_t buffer[MAX_DNS_PACKET];
+  int len = dnsUdp.read(buffer, packetSize);
+  if (len < 12) return; // رأس DNS لازم يكون 12 بايت على الأقل
+
+  // نتخطى اسم النطاق (QNAME) في قسم السؤال عشان نوصل لـQTYPE — مع حماية من أي حزمة تالفة
+  int pos = 12;
+  while (pos < len && buffer[pos] != 0) {
+    int labelLen = buffer[pos];
+    if (labelLen > 63 || pos + labelLen + 1 >= len) return;
+    pos += labelLen + 1;
+  }
+  if (pos >= len) return;
+  pos++; // نتخطى البايت الصفري النهائي لاسم النطاق
+  if (pos + 4 > len) return; // لازم يكون فاضل QTYPE(2)+QCLASS(2)
+
+  int questionEnd = pos + 4;
+  if (questionEnd - 12 > 480) return; // حماية إضافية من تجاوز حجم بافر الرد تحت (حالة نظرية بس)
+  uint16_t qtype = (buffer[pos] << 8) | buffer[pos + 1];
+
+  IPAddress remoteIp = dnsUdp.remoteIP();
+  uint16_t remotePort = dnsUdp.remotePort();
+
+  uint8_t response[MAX_DNS_PACKET];
+  int rlen = 0;
+  response[rlen++] = buffer[0]; response[rlen++] = buffer[1]; // نفس رقم العملية (ID)
+
+  if (qtype == 1) { // A record — رد بعنوان الجهاز
+    response[rlen++] = 0x81; response[rlen++] = 0x80; // استجابة عادية، مفيش خطأ
+    response[rlen++] = 0x00; response[rlen++] = 0x01; // QDCOUNT=1
+    response[rlen++] = 0x00; response[rlen++] = 0x01; // ANCOUNT=1
+    response[rlen++] = 0x00; response[rlen++] = 0x00; // NSCOUNT=0
+    response[rlen++] = 0x00; response[rlen++] = 0x00; // ARCOUNT=0
+    memcpy(response + rlen, buffer + 12, questionEnd - 12);
+    rlen += (questionEnd - 12);
+    response[rlen++] = 0xC0; response[rlen++] = 0x0C; // إشارة لاسم النطاق في السؤال (ضغط قياسي)
+    response[rlen++] = 0x00; response[rlen++] = 0x01; // TYPE A
+    response[rlen++] = 0x00; response[rlen++] = 0x01; // CLASS IN
+    response[rlen++] = 0x00; response[rlen++] = 0x00; response[rlen++] = 0x00; response[rlen++] = 0x3C; // TTL=60 ثانية
+    response[rlen++] = 0x00; response[rlen++] = 0x04; // طول البيانات = 4 بايت (IPv4)
+    response[rlen++] = dnsResolveIP[0]; response[rlen++] = dnsResolveIP[1];
+    response[rlen++] = dnsResolveIP[2]; response[rlen++] = dnsResolveIP[3];
+  } else {
+    // أي نوع تاني (AAAA وغيره) — NXDOMAIN فوري وصريح
+    response[rlen++] = 0x81; response[rlen++] = 0x83; // استجابة، rcode=3 (NXDOMAIN)
+    response[rlen++] = 0x00; response[rlen++] = 0x01; // QDCOUNT=1
+    response[rlen++] = 0x00; response[rlen++] = 0x00; // ANCOUNT=0
+    response[rlen++] = 0x00; response[rlen++] = 0x00;
+    response[rlen++] = 0x00; response[rlen++] = 0x00;
+    memcpy(response + rlen, buffer + 12, questionEnd - 12);
+    rlen += (questionEnd - 12);
+  }
+
+  dnsUdp.beginPacket(remoteIp, remotePort);
+  dnsUdp.write(response, rlen);
+  dnsUdp.endPacket();
+}
+
 void startCaptivePortal() {
   ap_mode_active = true;
 
@@ -480,7 +566,7 @@ void startCaptivePortal() {
     Serial.println("⚠️ تحذير: IP طلع 0.0.0.0 — مؤشر قوي إن نقطة الوصول مش شغّالة فعلياً رغم إن الكود اشتغل");
   }
 
-  dnsServer.start(DNS_PORT, "*", apIP);
+  startCustomDnsServer(apIP);
 
   webServer.on("/", handleRoot);
   webServer.on("/save", HTTP_POST, handleSave);
@@ -524,7 +610,7 @@ void tryBackgroundReconnect() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("✅ رجع الاتصال بالشبكة القديمة! جاري إغلاق وضع الإعداد...");
-    dnsServer.stop();
+    stopCustomDnsServer();
     webServer.close();
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
@@ -550,7 +636,7 @@ void loop() {
   updateStandbyLed();
 
   if (ap_mode_active) {
-    dnsServer.processNextRequest();
+    processCustomDnsRequests();
     webServer.handleClient();
 
     // ✅ (رجوع عن تعديل سابق) كنا نقلنا النداء ده لتاسك منفصلة على النواة التانية ظنًا إنه
