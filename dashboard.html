@@ -2091,15 +2091,21 @@ let allStudents = [];
 let cardModeStatusInterval = null;
 
 async function openCardModeModal() {
-  document.getElementById('cardModeModal').classList.add('open');
-  loadPaymentTitlesForCardMode();
-  loadBooksForCardMode();
+  // ✅ (فِكس جوهري) كلاس 'open' كان بيتحط على المودال *قبل* استدعاء refreshCardModeStatus()
+  // تحت — وrefreshCardModeStatus() نفسها بترفض تكمّل لو المودال 'open' أصلاً (عشان متبوظش
+  // تعديل المستخدم لو الاستدعاء ده جاي من التحديث الدوري في الخلفية). النتيجة: كل مرة
+  // المستخدم يفتح المودال، الاستعادة (مجموعة/حصة/مدرس/دفع/مذكرة) كانت بترفض تشتغل خالص،
+  // فيلاقي كل الحقول فاضية ويضطر يختار من الأول تاني حتى لو فيه وضع شغّال فعلاً. الحل: نجهّز
+  // كل القيم الأول (والمودال لسه "مقفول" في نظر الحارس ده)، وبعدين نظهره أخر خطوة
   const isCenter = sessionStorage.getItem('isCenter') === 'true';
   document.getElementById('cardModeInstructorLabel').style.display = isCenter ? 'block' : 'none';
   document.getElementById('cardModeInstructorSelect').style.display = isCenter ? 'block' : 'none';
-  // ✅ Aug 2026 (Phase I follow-up 10): سياق مجموعة+حصة مطلوب لكل الحسابات دلوقتي، مش السنتر بس
-  await loadCardModeInstructors(isCenter);
-  refreshCardModeStatus();
+  // ✅ (فِكس) دول كانوا بيتنادوا من غير await، فـrefreshCardModeStatus() تحت كانت ممكن تحاول
+  // تحدد بند السداد/المذكرة المحفوظين قبل ما قوائمهم تتحمّل أصلاً — الاختيار كان بيفشل بصمت
+  // (قيمة مالهاش وجود جوه <select> لسه) فتفضل القائمة على "-- اختر --" رغم إن فيه وضع محفوظ
+  await Promise.all([loadPaymentTitlesForCardMode(), loadBooksForCardMode(), loadCardModeInstructors(isCenter)]);
+  await refreshCardModeStatus();
+  document.getElementById('cardModeModal').classList.add('open');
 }
 
 // ============================================
@@ -2704,7 +2710,26 @@ async function refreshCardModeStatus() {
     descEl.style.color = isOnlyAttendance ? '' : 'var(--warning)';
 
     if (result.activeGroupName) {
-      restoreCardModeContextSelection(result.activeInstructorNameId, result.activeGroupName, result.activeSessionId);
+      await restoreCardModeContextSelection(result.activeInstructorNameId, result.activeGroupName, result.activeSessionId);
+    }
+
+    // ✅ (فِكس) دفع/مذكرة كانوا بيرجعوا لصناديق فاضية دايمًا لما المودال يتفتح تاني (checkbox
+    // مش متعلّم، بند/مذكرة مش متحددين) حتى لو الوضع ده شغّال فعليًا — يضطر المستخدم يعيد
+    // كل الاختيارات من الأول عشان يعدّل حاجة بسيطة، وده اللي كان بيسبب اللخبطة المقصودة هنا
+    if (result.remainingSeconds != null) {
+      const durationInput = document.getElementById('cardModeDurationInput');
+      if (durationInput) durationInput.value = Math.max(1, Math.round(result.remainingSeconds / 60)) || durationInput.value;
+    }
+    document.getElementById('cardModePaymentCb').checked = modes.includes('payment');
+    document.getElementById('cardModeBookCb').checked = modes.includes('book_payment');
+    onCardModeTypeChange();
+    if (modes.includes('payment')) {
+      document.getElementById('cardModePaymentTitle').value = result.paymentTitle || '';
+      document.getElementById('cardModePaymentAmount').value = result.paymentAmount ?? '';
+    }
+    if (modes.includes('book_payment')) {
+      document.getElementById('cardModeBookSelect').value = result.bookId || '';
+      document.getElementById('cardModeBookAmount').value = result.bookAmount ?? '';
     }
   } catch (error) { /* تجاهل */ }
 }
