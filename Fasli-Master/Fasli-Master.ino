@@ -385,27 +385,6 @@ void tryBackgroundReconnect() {
 }
 
 // =========================================================
-// 🔁 محاولة الاتصال الخلفية — في تاسك منفصلة (النواة 0) مش جوه loop() نفسها
-// =========================================================
-// ✅ (فِكس: صفحة الإعداد بتتأخر جداً أو مابتفتحش لوحدها) tryBackgroundReconnect() كانت
-// بتتنادى مباشرة جوه loop() (النواة 1، نفس اللوب المسؤولة عن الرد على DNS/الويب سيرفر)،
-// وهي بتعمل WiFi.begin() وتستنى لحد 8 ثواني (blocking) قبل ما ترجع — يعني طول الـ8 ثواني
-// دول، dnsServer.processNextRequest() وwebServer.handleClient() مبيتناداش خالص، فأي طلب
-// فعلي من موبايل المستخدم (بحث DNS أو فتح صفحة) كان بيستنى بلا رد لحد ما المحاولة تخلص.
-// بقت دلوقتي في تاسك مستقلة تماماً (زي uploadTask/pingTask بالظبط) عشان loop() تفضل
-// بترد فورًا على أي طلب طول الوقت، بغض النظر عن حالة محاولة الاتصال الخلفية
-// =========================================================
-void backgroundReconnectTask(void * pvParameters) {
-  while (true) {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    if (!ap_mode_active) continue;
-    if (millis() - lastBackgroundRetry < BACKGROUND_RETRY_INTERVAL) continue;
-    lastBackgroundRetry = millis();
-    tryBackgroundReconnect();
-  }
-}
-
-// =========================================================
 // 🔁 النواة 1: قراءة الكروت
 // =========================================================
 void loop() {
@@ -414,6 +393,19 @@ void loop() {
   if (ap_mode_active) {
     dnsServer.processNextRequest();
     webServer.handleClient();
+
+    // ✅ (رجوع عن تعديل سابق) كنا نقلنا النداء ده لتاسك منفصلة على النواة التانية ظنًا إنه
+    // هو سبب تأخّر/عدم فتح صفحة الإعداد تلقائيًا — لكن اتأكد إن الكود الأصلي (النداء هنا
+    // مباشرة) كان شغّال تمام قبل أي تعديل، وإن المشكلة الحقيقية حاجة تانية تمامًا (حاجة في
+    // نظام الموبايل نفسه، مش في الكود). رجّعناه هنا زي ما كان بالظبط تفاديًا لأي أثر جانبي
+    // غير متوقع من تشغيله في تاسك مستقلة (زي ضغط إضافي على الذاكرة أو تعارض بين النواتين
+    // على واي فاي)، وسبنا بس إضافة الحماية الوحيدة المضمون إنها مفيدة (تحت في
+    // tryBackgroundReconnect نفسها): تأجيل المحاولة تمامًا لو فيه جهاز متصل بنقطة الوصول دلوقتي
+    if (millis() - lastBackgroundRetry > BACKGROUND_RETRY_INTERVAL) {
+      lastBackgroundRetry = millis();
+      tryBackgroundReconnect();
+    }
+
     delay(2);
     return;
   }
@@ -679,7 +671,6 @@ void setup() {
 
   xTaskCreatePinnedToCore(uploadTask, "UploadTask", 8192, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(pingTask, "PingTask", 4096, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(backgroundReconnectTask, "BgReconnectTask", 4096, NULL, 1, NULL, 0);
 
   Serial.println("\n✅ فَصلي - جهاز استقبال كروت المخزون (الماستر) جاهز.");
   Serial.println("📡 أوامر Serial: GET_CONFIG, SET_CONFIG:SSID|PASS, RESET_CONFIG, PING");
