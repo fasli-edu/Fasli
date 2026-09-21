@@ -1839,16 +1839,19 @@ async function openCardModeModal() {
     showToast('⛔ ليس لديك صلاحية لإدارة وضع الكارت', 'warning');
     return;
   }
-  document.getElementById('cardModeModal').classList.add('open');
-  loadPaymentTitlesForCardMode();
-  loadBooksForCardMode();
+  // ✅ (فِكس جوهري، نفس فِكس dashboard.html) كلاس 'open' كان بيتحط على المودال *قبل*
+  // استدعاء refreshCardModeStatus() تحت — وrefreshCardModeStatus() نفسها بترفض تكمّل لو
+  // المودال 'open' أصلاً (عشان متبوظش تعديل المستخدم لو الاستدعاء جاي من التحديث الدوري في
+  // الخلفية). النتيجة: كل مرة يتفتح المودال، الاستعادة كانت بترفض تشتغل خالص، فكل الحقول
+  // بتفضل فاضية. الحل: نجهّز كل القيم الأول، وبعدين نظهر المودال آخر خطوة
   const isCenterAssistant = sessionStorage.getItem('isCenter') === 'true';
   document.getElementById('cardModeInstructorLabel').style.display = isCenterAssistant ? 'block' : 'none';
   document.getElementById('cardModeInstructorSelect').style.display = isCenterAssistant ? 'block' : 'none';
-  // ✅ Batch 45 (متابعة): سياق مجموعة+حصة مطلوب دلوقتي لكل الحسابات (مدرس أو مساعد) — والمدرس
-  // (instructorNameId) مطلوب إضافي بس لو الحساب اللي المساعد تابعله سنتر (نفس منطق dashboard.html)
-  await loadCardModeInstructors(isCenterAssistant);
-  refreshCardModeStatus();
+  // ✅ (فِكس) دول كانوا بيتنادوا من غير await، فتحديد بند السداد/المذكرة المحفوظين كان ممكن
+  // يفشل بصمت لو قوائمهم لسه ماتحمّلتش
+  await Promise.all([loadPaymentTitlesForCardMode(), loadBooksForCardMode(), loadCardModeInstructors(isCenterAssistant)]);
+  await refreshCardModeStatus();
+  document.getElementById('cardModeModal').classList.add('open');
 }
 
 // ============================================
@@ -2220,7 +2223,25 @@ async function refreshCardModeStatus() {
     descEl.style.color = isOnlyAttendance ? '' : 'var(--warning)';
 
     if (result.activeGroupName) {
-      restoreCardModeContextSelection(result.activeInstructorNameId, result.activeGroupName, result.activeSessionId);
+      await restoreCardModeContextSelection(result.activeInstructorNameId, result.activeGroupName, result.activeSessionId);
+    }
+
+    // ✅ (فِكس، نفس فِكس dashboard.html) استعادة دفع/مذكرة/مدتهم — كانوا بيرجعوا فاضيين
+    // دايمًا لما المودال يتفتح تاني حتى لو الوضع ده شغّال فعلاً
+    if (result.remainingSeconds != null) {
+      const durationInput = document.getElementById('cardModeDurationInput');
+      if (durationInput) durationInput.value = Math.max(1, Math.round(result.remainingSeconds / 60)) || durationInput.value;
+    }
+    document.getElementById('cardModePaymentCb').checked = modes.includes('payment');
+    document.getElementById('cardModeBookCb').checked = modes.includes('book_payment');
+    onCardModeTypeChange();
+    if (modes.includes('payment')) {
+      document.getElementById('cardModePaymentTitle').value = result.paymentTitle || '';
+      document.getElementById('cardModePaymentAmount').value = result.paymentAmount ?? '';
+    }
+    if (modes.includes('book_payment')) {
+      document.getElementById('cardModeBookSelect').value = result.bookId || '';
+      document.getElementById('cardModeBookAmount').value = result.bookAmount ?? '';
     }
   } catch (error) { /* تجاهل */ }
 }
