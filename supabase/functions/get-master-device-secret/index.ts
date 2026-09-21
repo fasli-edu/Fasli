@@ -27,8 +27,16 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const forceRegenerate = body?.regenerate === true;
 
+    // ✅ (أمان/وظيفي حرج) الجدول ده صف واحد بس (singleton)، بس عموده id "generated always as
+    // identity" — يعني مفيش ضمان إن الصف ده هيكون id=1 بالظبط (وفعليًا مكانش موجود خالص لسه في
+    // القاعدة الجديدة بعد الترحيل). الكود القديم كان بيفترض id=1 صراحة: .eq("id", 1) في الـselect
+    // والـupdate مع بعض — لو الصف ده مش موجود، الـupdate كان بيرجع نجاح كاذب (0 صفوف اتأثرت، من
+    // غير أي error) والمفتاح المولّد كان بيترجع للواجهة بس من غير ما يتحفظ فعليًا في القاعدة —
+    // فكل ضغطة على "عرض المفتاح" كانت بتولّد مفتاح عشوائي جديد تمامًا وتعرضه، من غير ما يستقر
+    // أبداً. الحل: نجيب الصف الوحيد الموجود (لو موجود) بأي id كان، ونستخدم id الحقيقي بتاعه في
+    // أي تحديث؛ ولو مفيش صف خالص، ننشئ واحد جديد (INSERT) بدل التحديث الوهمي.
     const { data: device, error } = await supabase
-      .from("master_device").select("device_secret").eq("id", 1).maybeSingle();
+      .from("master_device").select("id, device_secret").limit(1).maybeSingle();
 
     if (error) {
       return new Response(JSON.stringify({ success: false, message: error.message }),
@@ -38,10 +46,11 @@ serve(async (req) => {
     let secret = device?.device_secret;
     if (!secret || forceRegenerate) {
       secret = generateSecret();
-      const { error: updateError } = await supabase
-        .from("master_device").update({ device_secret: secret }).eq("id", 1);
-      if (updateError) {
-        return new Response(JSON.stringify({ success: false, message: updateError.message }),
+      const writeError = device
+        ? (await supabase.from("master_device").update({ device_secret: secret }).eq("id", device.id)).error
+        : (await supabase.from("master_device").insert({ device_secret: secret })).error;
+      if (writeError) {
+        return new Response(JSON.stringify({ success: false, message: writeError.message }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
