@@ -515,6 +515,7 @@
       <div id="masterSecretBox" style="display:none;margin-top:12px;padding:12px;border-radius:10px;background:var(--panel-bg);border:1px solid var(--panel-border);">
         <div style="font-size:12.5px;color:var(--muted-text);margin-bottom:4px;">DEVICE_SECRET (الصقيه في كود بورد الماستر):</div>
         <div style="font-family:monospace;font-size:13px;direction:ltr;text-align:left;word-break:break-all;" id="masterSecretText">—</div>
+        <button class="btn btn-secondary" style="margin-top:10px;" onclick="regenerateMasterDeviceSecret()">🔄 توليد مفتاح جديد</button>
       </div>
       <!-- ✅ (طلب) كان النص هنا أزرق غامق (#1e40af) ثابت جوه بوكس خلفيته بتتحول لأزرق-نيڤي غامق
            في الوضع الليلي (var(--info-box-bg)) — يعني نص غامق فوق خلفية غامقة، شبه مختفي.
@@ -1563,6 +1564,29 @@
       } catch (error) {
         console.error('❌ خطأ:', error);
         showCardsMessage('❌ فشل جلب المفتاح', 'error');
+      }
+    }
+
+    async function regenerateMasterDeviceSecret() {
+      if (!(await customConfirm('توليد مفتاح جديد لجهاز الماستر هيوقف أي بورد ماستر شغّال بالمفتاح الحالي، ولازم تلصقي المفتاح الجديد في كوده وتعملي فلاش تاني. متأكدة؟'))) return;
+
+      try {
+        const headers = getAuthHeaders();
+        if (!headers) return;
+        const response = await fetch(PROJECT_URL + '/functions/v1/get-master-device-secret', {
+          method: 'POST', headers, body: JSON.stringify({ regenerate: true })
+        });
+        const result = await response.json();
+        if (result.success) {
+          document.getElementById('masterSecretText').textContent = result.data.deviceSecret;
+          document.getElementById('masterSecretBox').style.display = 'block';
+          showCardsMessage('✅ اتولّد مفتاح جديد — جهّزي بورد الماستر بيه قبل ما تستخدميه', 'success');
+        } else {
+          showCardsMessage('❌ ' + result.message, 'error');
+        }
+      } catch (error) {
+        console.error('❌ خطأ:', error);
+        showCardsMessage('❌ فشل توليد المفتاح', 'error');
       }
     }
 
