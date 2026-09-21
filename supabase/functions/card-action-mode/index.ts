@@ -186,84 +186,89 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // ✅ Aug 2026 (Phase I follow-up 10): تحديد المجموعة والحصة بقى مطلوب إجباري قبل
-  // تفعيل القارئ لكل الحسابات (سنتر وعادي) — المدرس (instructorNameId) لسه مطلوب
-  // لحسابات السنتر بس، لأن الحساب العادي هو نفسه المدرس الوحيد
-  const { data: teacherRow } = await supabase.from("teachers").select("is_center").eq("client_id", tokenClientId).maybeSingle();
-  const isCenter = teacherRow?.is_center === true;
-
   let activeInstructorNameId: number | null = null;
   let activeGroupName: string | null = null;
   let activeSessionId: number | null = null;
   let activeSessionLabel: string | null = null;
 
-  if (!groupName) {
-    return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد المجموعة قبل تفعيل القارئ" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  // ✅ (فِكس) سياق الحصة (مجموعة+حصة) مربوط بالحضور بس — لو المستخدم مش مفعّل تسجيل الحضور،
+  // مفيش داعي أصلاً لأي حصة (attendance_sessions)، فيقدر يفعّل دفع/مذكرة بس بوقت انتهاء
+  // موحّد من غير ما يُجبر يختار مجموعة وحصة كانوا أصلاً بيخدموا تسجيل الحضور تحديدًا
+  if (attendanceEnabled) {
+    // ✅ Aug 2026 (Phase I follow-up 10): تحديد المجموعة والحصة بقى مطلوب إجباري قبل
+    // تفعيل القارئ لكل الحسابات (سنتر وعادي) — المدرس (instructorNameId) لسه مطلوب
+    // لحسابات السنتر بس، لأن الحساب العادي هو نفسه المدرس الوحيد
+    const { data: teacherRow } = await supabase.from("teachers").select("is_center").eq("client_id", tokenClientId).maybeSingle();
+    const isCenter = teacherRow?.is_center === true;
+
+    if (!groupName) {
+      return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد المجموعة قبل تفعيل الحضور" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    let resolvedInstructorId: number | null = null;
+    let resolvedInstructorName: string | null = null;
+
+    if (isCenter) {
+      if (!instructorNameId) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد المدرس والمجموعة قبل تفعيل الحضور" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { data: instructorRow } = await supabase.from("instructor_names").select("id, name")
+        .eq("id", instructorNameId).eq("teacher_id", tokenClientId).maybeSingle();
+      if (!instructorRow) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ المدرس المحدد غير موجود" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { data: groupRow } = await supabase.from("groups").select("name, instructor_name_id")
+        .eq("name", groupName).eq("teacher_id", tokenClientId).maybeSingle();
+      if (!groupRow || groupRow.instructor_name_id !== instructorRow.id) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ المجموعة المحددة غير مربوطة بهذا المدرس" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      resolvedInstructorId = instructorRow.id;
+      resolvedInstructorName = instructorRow.name;
+    }
+
+    // ✅ اليوم بتوقيت القاهرة — الحصة تبقى متاحة للاختيار (أو التعديل) بس لو اتنشأت النهاردة
+    const cairoNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
+    const today = cairoNow.toISOString().split("T")[0];
+
+    if (sessionId) {
+      const { data: sessionRow } = await supabase.from("attendance_sessions").select("id, session_label, group_name, session_date")
+        .eq("id", sessionId).eq("teacher_id", tokenClientId).maybeSingle();
+      if (!sessionRow || sessionRow.group_name !== groupName || sessionRow.session_date !== today) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ الحصة المحددة غير متاحة اليوم لهذه المجموعة" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      activeSessionId = sessionRow.id;
+      activeSessionLabel = sessionRow.session_label || null;
+      // ✅ نحدّث وقت انتهاء الحصة المختارة (بالفعل موجودة) على القيمة الجديدة اللي المستخدم
+      // اختارها دلوقتي — موحّد مع وضع الكارت نفسه، مش قيمتها الأصلية وقت إنشائها
+      await supabase.from("attendance_sessions")
+        .update({ absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes })
+        .eq("id", activeSessionId);
+    } else if (newSessionLabel) {
+      const { data: newSession, error: newSessionError } = await supabase.from("attendance_sessions").insert({
+        teacher_id: tokenClientId, group_name: groupName, session_label: newSessionLabel,
+        instructor_name_id: resolvedInstructorId, instructor_name: resolvedInstructorName,
+        absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, session_date: today,
+        created_by_role: payload.role, created_by_id: payload.sub, created_by_name: payload.name || null,
+      }).select("id, session_label").single();
+      if (newSessionError || !newSession) {
+        return new Response(JSON.stringify({ success: false, message: "⚠️ تعذر إنشاء الحصة الجديدة" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      activeSessionId = newSession.id;
+      activeSessionLabel = newSession.session_label || null;
+    } else {
+      return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد حصة موجودة من النهاردة أو تنشئ حصة جديدة" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    activeInstructorNameId = resolvedInstructorId;
+    activeGroupName = groupName;
   }
-
-  let resolvedInstructorId: number | null = null;
-  let resolvedInstructorName: string | null = null;
-
-  if (isCenter) {
-    if (!instructorNameId) {
-      return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد المدرس والمجموعة قبل تفعيل القارئ" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    const { data: instructorRow } = await supabase.from("instructor_names").select("id, name")
-      .eq("id", instructorNameId).eq("teacher_id", tokenClientId).maybeSingle();
-    if (!instructorRow) {
-      return new Response(JSON.stringify({ success: false, message: "⚠️ المدرس المحدد غير موجود" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    const { data: groupRow } = await supabase.from("groups").select("name, instructor_name_id")
-      .eq("name", groupName).eq("teacher_id", tokenClientId).maybeSingle();
-    if (!groupRow || groupRow.instructor_name_id !== instructorRow.id) {
-      return new Response(JSON.stringify({ success: false, message: "⚠️ المجموعة المحددة غير مربوطة بهذا المدرس" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    resolvedInstructorId = instructorRow.id;
-    resolvedInstructorName = instructorRow.name;
-  }
-
-  // ✅ اليوم بتوقيت القاهرة — الحصة تبقى متاحة للاختيار (أو التعديل) بس لو اتنشأت النهاردة
-  const cairoNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
-  const today = cairoNow.toISOString().split("T")[0];
-
-  if (sessionId) {
-    const { data: sessionRow } = await supabase.from("attendance_sessions").select("id, session_label, group_name, session_date")
-      .eq("id", sessionId).eq("teacher_id", tokenClientId).maybeSingle();
-    if (!sessionRow || sessionRow.group_name !== groupName || sessionRow.session_date !== today) {
-      return new Response(JSON.stringify({ success: false, message: "⚠️ الحصة المحددة غير متاحة اليوم لهذه المجموعة" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    activeSessionId = sessionRow.id;
-    activeSessionLabel = sessionRow.session_label || null;
-    // ✅ نحدّث وقت انتهاء الحصة المختارة (بالفعل موجودة) على القيمة الجديدة اللي المستخدم
-    // اختارها دلوقتي — موحّد مع وضع الكارت نفسه، مش قيمتها الأصلية وقت إنشائها
-    await supabase.from("attendance_sessions")
-      .update({ absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes })
-      .eq("id", activeSessionId);
-  } else if (newSessionLabel) {
-    const { data: newSession, error: newSessionError } = await supabase.from("attendance_sessions").insert({
-      teacher_id: tokenClientId, group_name: groupName, session_label: newSessionLabel,
-      instructor_name_id: resolvedInstructorId, instructor_name: resolvedInstructorName,
-      absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, session_date: today,
-      created_by_role: payload.role, created_by_id: payload.sub, created_by_name: payload.name || null,
-    }).select("id, session_label").single();
-    if (newSessionError || !newSession) {
-      return new Response(JSON.stringify({ success: false, message: "⚠️ تعذر إنشاء الحصة الجديدة" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    activeSessionId = newSession.id;
-    activeSessionLabel = newSession.session_label || null;
-  } else {
-    return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد حصة موجودة من النهاردة أو تنشئ حصة جديدة" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  activeInstructorNameId = resolvedInstructorId;
-  activeGroupName = groupName;
 
   const setByName = payload.name || (payload.role === "assistant" ? "مساعد" : "مدرس");
 

@@ -332,7 +332,7 @@
           <div class="modal-section-title">⏰ هتنتهي الساعة كام؟</div>
           <input type="time" id="cardModeEndTime">
           <p style="font-size:12px;color:var(--gray-500);margin-top:6px;">
-            لازم تكون بعد الوقت دلوقتي. بعدها، تسجيل الحضور بيتقفل على الحصة دي، وأي دفع/سداد مفعّل بيرجع لحضور بس تلقائياً.
+            لازم تكون بعد الوقت دلوقتي. بعدها، كل الأوضاع المفعّلة دلوقتي بتتوقف تلقائيًا (لو الحضور مفعّل، تسجيل الحضور بيتقفل على الحصة دي كمان).
           </p>
         </div>
 
@@ -2260,10 +2260,14 @@ function closeCardModeModal() {
   document.getElementById('cardModeModal').classList.remove('open');
 }
 function onCardModeTypeChange() {
+  const attendanceChecked = document.getElementById('cardModeAttendance').checked;
   const paymentChecked = document.getElementById('cardModePaymentCb').checked;
   const bookChecked = document.getElementById('cardModeBookCb').checked;
   document.getElementById('cardModePaymentField').style.display = paymentChecked ? 'block' : 'none';
   document.getElementById('cardModeBookField').style.display = bookChecked ? 'block' : 'none';
+  // ✅ سياق الحصة (مجموعة+حصة) مربوط بالحضور بس — لو الحضور مش مفعّل، مفيش داعي لاختيار
+  // مجموعة/حصة خالص (دفع/مذكرة بيشتغلوا بوقت انتهاء موحّد من غيرهم تمامًا)
+  document.getElementById('cardModeCenterContext').style.display = attendanceChecked ? 'block' : 'none';
 }
 
 function onCardModePaymentTitleChange() {
@@ -2432,26 +2436,31 @@ async function saveCardMode() {
     if (!body.bookId || !body.bookAmount) { showToast('⚠️ اختر المذكرة والمبلغ', 'error'); return; }
   }
 
-  // ✅ Aug 2026 (Phase I follow-up 10): مجموعة+حصة النهاردة مطلوبة لكل الحسابات قبل التفعيل —
-  // المدرس مطلوب لحسابات السنتر بس
-  const isCenterAccount = sessionStorage.getItem('isCenter') === 'true';
-  if (isCenterAccount) {
-    const instructorId = document.getElementById('cardModeInstructorSelect').value;
-    if (!instructorId) { showToast('⚠️ حدد المدرس قبل تفعيل القارئ', 'error'); return; }
-    body.instructorNameId = Number(instructorId);
-  }
-  const groupName = document.getElementById('cardModeGroupSelect').value;
-  const sessionValue = document.getElementById('cardModeSessionSelect').value;
-  if (!groupName || !sessionValue) {
-    showToast('⚠️ حدد المجموعة والحصة قبل تفعيل القارئ', 'error'); return;
-  }
-  body.groupName = groupName;
-  if (sessionValue === '__new__') {
-    const newSessionLabel = document.getElementById('cardModeNewSessionLabel').value.trim();
-    if (!newSessionLabel) { showToast('⚠️ حدد اسم الحصة الجديدة', 'error'); return; }
-    body.newSessionLabel = newSessionLabel;
-  } else {
-    body.sessionId = Number(sessionValue);
+  // ✅ سياق الحصة (مجموعة+حصة) مربوط بالحضور بس — لو الحضور مش مفعّل، منبعتش أي بيانات
+  // مجموعة/حصة خالص، ومنطلبهاش من المستخدم أصلاً (دفع/مذكرة بيشتغلوا بوقت الانتهاء الموحّد
+  // فوق من غير أي مجموعة/حصة)
+  if (attendanceChecked) {
+    // ✅ Aug 2026 (Phase I follow-up 10): مجموعة+حصة النهاردة مطلوبة لحسابات الحضور —
+    // المدرس مطلوب لحسابات السنتر بس
+    const isCenterAccount = sessionStorage.getItem('isCenter') === 'true';
+    if (isCenterAccount) {
+      const instructorId = document.getElementById('cardModeInstructorSelect').value;
+      if (!instructorId) { showToast('⚠️ حدد المدرس قبل تفعيل الحضور', 'error'); return; }
+      body.instructorNameId = Number(instructorId);
+    }
+    const groupName = document.getElementById('cardModeGroupSelect').value;
+    const sessionValue = document.getElementById('cardModeSessionSelect').value;
+    if (!groupName || !sessionValue) {
+      showToast('⚠️ حدد المجموعة والحصة قبل تفعيل الحضور', 'error'); return;
+    }
+    body.groupName = groupName;
+    if (sessionValue === '__new__') {
+      const newSessionLabel = document.getElementById('cardModeNewSessionLabel').value.trim();
+      if (!newSessionLabel) { showToast('⚠️ حدد اسم الحصة الجديدة', 'error'); return; }
+      body.newSessionLabel = newSessionLabel;
+    } else {
+      body.sessionId = Number(sessionValue);
+    }
   }
 
   try {
