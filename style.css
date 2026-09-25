@@ -911,7 +911,7 @@ body.dark-mode .modal-close:hover { background: #3D2F0A; color: #F5C842; }
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10050;
+  z-index: 100020;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2159,3 +2159,31 @@ html body .report-preview .report-row-alert td { background: #fef2f2 !important;
    بنفرض شكل ثابت وواضح دايماً بغض النظر عن الوضع الليلي، زي أي مستند رسمي للطباعة
    ============================================ */
 
+
+/* ✅ نافذة "قرارات الحضور" (attendance-decisions.js) — طابور طلبات طلاب مش تابعين لمجموعة الحصة
+   الشغّالة. الشريط السفلي بيفضل ظاهر لما النافذة تتصغّر عشان الطلبات ماتتنساش وقت الزحمة */
+#dqModal { z-index: 100003; } /* فوق .sidebar (100001) وإلا السايدبار بيقصّ النافذة */
+.dq-dock { position: fixed; bottom: 76px; left: 18px; z-index: 100003; display: none; align-items: center; gap: 8px;
+  padding: 11px 18px; border: 0; border-radius: 999px; background: var(--primary); color: var(--primary-contrast);
+  font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.28); animation: dqPulse 1.6s ease-in-out infinite; }
+@keyframes dqPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { .dq-dock { animation: none; } }
+.dq-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.dq-head h3 { color: var(--gray-900); margin: 0; font-size: 17px; flex: 1 1 auto; }
+.dq-nav { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+.dq-nav-btn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--gray-200, #e5e7eb); background: var(--gray-50); cursor: pointer; font-size: 16px; }
+.dq-nav-btn:disabled { opacity: 0.4; cursor: default; }
+.dq-min { border: 0; background: transparent; color: var(--gray-500, #6b7280); cursor: pointer; font-weight: 700; font-size: 13px; }
+.dq-card { color: var(--gray-900); padding: 14px; background: var(--gray-50); border-radius: 10px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+.dq-student { font-size: 18px; font-weight: 800; }
+.dq-row { font-size: 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+.dq-muted { color: var(--gray-500, #6b7280); font-size: 12.5px; }
+.dq-warn { padding: 9px 12px; border-radius: 8px; background: var(--danger-light); color: var(--danger); font-size: 13px; font-weight: 600; }
+.dq-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.dq-tab { color: var(--gray-900); flex: 1 1 130px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--gray-200, #e5e7eb); background: transparent;
+  color: inherit; font-weight: 700; font-size: 13.5px; cursor: pointer; }
+.dq-tab.active { border-color: var(--primary); background: var(--primary-light); color: var(--gray-900); box-shadow: inset 0 0 0 1px var(--primary); }
+.dq-tab-reject.active { border-color: var(--danger); background: var(--danger-light); color: var(--danger); }
+.dq-pane { display: flex; flex-direction: column; gap: 8px; }
+.dq-label { color: var(--gray-900); font-size: 13px; font-weight: 700; }
+.dq-input { color: var(--gray-900); width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--gray-200, #e5e7eb); font: inherit; background: var(--white, #fff); color: inherit; }
