@@ -164,6 +164,54 @@ async function withScanLock<T>(
   }
 }
 
+// ✅ تسجيل طلب "بانتظار قرار" لطالب مش تابع لمجموعة الحصة الشغّالة (بدل الرفض المباشر).
+// - لو نفس الطالب له قرار سابق على نفس الحصة: اتقبل → بنقول "اتسجّل بالفعل"، واترفض من أقل
+//   من دقيقتين → بنرفض بسرعة من غير ما نفتح نافذة تانية (الرفض بيخص الطالب ده بس، مش بيمنع
+//   أي طالب تاني ولا بيوقف القارئ)
+// - لو له طلب معلّق بالفعل: مانكرّرش الطلب، بنرد "بانتظار القرار"
+async function queueAttendanceDecision(
+  supabase: any, teacherId: string, student: { uid: string; name: string; group_name: string | null },
+  scannedCardUid: string | undefined,
+  ctx: { groupName: string; sessionId: number | null; sessionLabel: string | null; instructorNameId: number | null; instructorName: string | null },
+  reason: string,
+): Promise<{ status: number; body: any }> {
+  const REJECT_MEMORY_MS = 2 * 60 * 1000;
+  const PENDING_TTL_MS = 5 * 60 * 1000;
+
+  let lastQuery = supabase.from("pending_attendance_decisions").select("status, resolution, resolved_at")
+    .eq("teacher_id", teacherId).eq("student_uid", student.uid).in("status", ["approved", "rejected"])
+    .order("resolved_at", { ascending: false }).limit(1);
+  lastQuery = ctx.sessionId ? lastQuery.eq("active_session_id", ctx.sessionId) : lastQuery.is("active_session_id", null);
+  const { data: lastRows } = await lastQuery;
+  const last = lastRows?.[0];
+  if (last?.status === "approved") {
+    return { status: 409, body: { success: false, message: "DUPLICATE_IGNORE", detail: "سبق تسجيل قرار لهذا الطالب في هذه الحصة" } };
+  }
+  if (last?.status === "rejected" && last.resolved_at && Date.now() - new Date(last.resolved_at).getTime() < REJECT_MEMORY_MS) {
+    return { status: 403, body: { success: false, message: `⛔ ${student.name} اترفض من المدرس لهذه الحصة`, code: "DECISION_REJECTED" } };
+  }
+
+  // طلب معلّق قديم انتهى وقته لازم يتقفل الأول، وإلا الفهرس الفريد (طلب معلّق واحد للطالب) هيمنع الجديد
+  await supabase.from("pending_attendance_decisions").update({ status: "expired" })
+    .eq("teacher_id", teacherId).eq("student_uid", student.uid).eq("status", "pending").lt("expires_at", new Date().toISOString());
+
+  const { error } = await supabase.from("pending_attendance_decisions").insert({
+    teacher_id: teacherId, student_uid: student.uid, student_name: student.name, home_group_name: student.group_name,
+    card_uid: scannedCardUid || null, active_group_name: ctx.groupName, active_session_id: ctx.sessionId,
+    active_session_label: ctx.sessionLabel, active_instructor_name_id: ctx.instructorNameId, active_instructor_name: ctx.instructorName,
+    reason, expires_at: new Date(Date.now() + PENDING_TTL_MS).toISOString(),
+  });
+  // 23505 = فيه طلب معلّق فعلاً لنفس الطالب (تكرار مسح أثناء الانتظار) — مش خطأ
+  if (error && error.code !== "23505") {
+    console.error("⚠️ فشل تسجيل طلب قرار الحضور:", error.message);
+    return { status: 500, body: { success: false, message: "⚠️ تعذر تسجيل الطلب، حاول تاني" } };
+  }
+  return {
+    status: 202,
+    body: { success: false, code: "NEEDS_DECISION", message: `⏳ ${student.name} مش مسجّل في مجموعة "${ctx.groupName}" — بانتظار قرار المدرس` },
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -338,6 +386,24 @@ serve(async (req) => {
         };
       }
 
+      // ✅ طالب مش تابع لمجموعة الحصة الشغّالة: مايترفضش ولا بيتنفّذ له أي حاجة (حضور ولا دفع)
+      // قبل قرار المدرس/المساعد — بنسجّل طلب "بانتظار قرار" وبتظهر له نافذة قرار في لوحة التحكم
+      // (رفض / تعويض حصة فاتت / حضور مبكر). الفحص بيتم هنا، قبل أوضاع الدفع تحت، عشان مايتسجّلش
+      // بند مالي لحد قبل ما يتقرر أصلاً إنه يحضر
+      if (centerActiveContext && cardMode.attendance_enabled !== false) {
+        const [{ data: preStudent }, { data: preLink }] = await Promise.all([
+          supabase.from("students").select("uid, name, group_name").eq("uid", uid).eq("teacher_id", clientId).maybeSingle(),
+          supabase.from("student_group_links").select("id").eq("student_uid", uid).eq("group_name", centerActiveContext.groupName).maybeSingle(),
+        ]);
+        if (preStudent && preStudent.group_name !== centerActiveContext.groupName && !preLink) {
+          const decisionResponse = await queueAttendanceDecision(
+            supabase, clientId, preStudent, body?.uid, centerActiveContext, "no_lane",
+          );
+          return new Response(JSON.stringify(decisionResponse.body),
+            { status: decisionResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
       // ✅ المدة بقت قابلة للتخصيص من المدرس، بدل ما تكون 5 دقايق ثابتة دايماً
       const durationMs = (cardMode.duration_minutes || 30) * 60 * 1000;
       const extraModesActive = (cardMode.payment_enabled || cardMode.book_payment_enabled) &&
@@ -446,9 +512,15 @@ serve(async (req) => {
         if (sessionId) {
           const { data: sessionRow } = await supabase
             .from("attendance_sessions")
-            .select("id, session_label, group_name, teacher_id, session_date, created_at, absence_threshold_minutes, ended_at")
+            .select("*")
             .eq("id", sessionId).maybeSingle();
           if (sessionRow && sessionRow.teacher_id === clientId && sessionRow.group_name === groupName && sessionRow.session_date === todayDateStr) {
+            // ✅ حصة اتعملت مسبقاً (حضور مبكر لطالب) ولسه ماتفتحتش: فتحها دلوقتي بيبدأ حساب المهلة من
+            // اللحظة دي، مش من وقت إنشائها القديم (وإلا تتعتبر منتهية فوراً ويتحسب غياب للمجموعة)
+            if (sessionRow.scheduled_only) {
+              sessionRow.created_at = new Date().toISOString();
+              await supabase.from("attendance_sessions").update({ created_at: sessionRow.created_at, scheduled_only: false }).eq("id", sessionRow.id);
+            }
             validSessionId = sessionRow.id;
             sessionLabel = sessionRow.session_label;
             sessionCreatedAt = sessionRow.created_at;

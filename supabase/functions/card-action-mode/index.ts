@@ -240,7 +240,7 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
     const today = cairoNow.toISOString().split("T")[0];
 
     if (sessionId) {
-      const { data: sessionRow } = await supabase.from("attendance_sessions").select("id, session_label, group_name, session_date")
+      const { data: sessionRow } = await supabase.from("attendance_sessions").select("*")
         .eq("id", sessionId).eq("teacher_id", tokenClientId).maybeSingle();
       if (!sessionRow || sessionRow.group_name !== groupName || sessionRow.session_date !== today) {
         return new Response(JSON.stringify({ success: false, message: "⚠️ الحصة المحددة غير متاحة اليوم لهذه المجموعة" }),
@@ -250,8 +250,13 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
       activeSessionLabel = sessionRow.session_label || null;
       // ✅ نحدّث وقت انتهاء الحصة المختارة (بالفعل موجودة) على القيمة الجديدة اللي المستخدم
       // اختارها دلوقتي — موحّد مع وضع الكارت نفسه، مش قيمتها الأصلية وقت إنشائها
+      // ✅ حصة اتعملت مسبقاً (حضور مبكر لطالب) وده أول فتح فعلي ليها: بيبدأ حساب المهلة من دلوقتي
+      // ويتشال علامة "مسبقة"، عشان فحص الغياب مايحسبهاش بدأت من وقت إنشائها القديم
+      const openingUpdate = sessionRow.scheduled_only
+        ? { created_at: new Date().toISOString(), scheduled_only: false }
+        : {};
       await supabase.from("attendance_sessions")
-        .update({ absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes })
+        .update({ absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, ...openingUpdate })
         .eq("id", activeSessionId);
     } else if (newSessionLabel) {
       const { data: newSession, error: newSessionError } = await supabase.from("attendance_sessions").insert({

@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=56">
+  <link rel="stylesheet" href="style.css?v=57">
   <script src="activity-format.js?v=8"></script>
 </head>
 <body>
@@ -2769,6 +2769,7 @@ async function refreshCardModeStatus() {
     const result = await response.json();
     const descEl = document.getElementById('cardModeDesc');
     if (!result.success) return;
+    window.__fasliCardModeActive = !!result.isEnabled; // ✅ نافذة قرارات الحضور بتسرّع فحص الطلبات طول ما القارئ شغّال
 
     // ✅ نعبّي حقول المودال بالحالة الحالية، عشان لما المستخدم يفتحه يلاقي إعداداته زي ما هي.
     // ✅ (طلب متابعة) استخدمنا isEnabled (مش readerEnabled) هنا عشان الـ checkbox وصندوق
@@ -3726,5 +3727,6 @@ async function confirmReset() {
 <script src="recovery-email.js?v=4"></script>
 <script src="branding.js?v=4"></script>
 <script src="custom-dialogs.js?v=4"></script>
+<script src="attendance-decisions.js?v=1"></script>
 </body>
 </html>

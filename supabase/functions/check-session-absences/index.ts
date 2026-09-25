@@ -96,6 +96,9 @@ async function processTeacherAbsences(
   const notifRows: any[] = [];
 
   for (const session of sessions) {
+    // ✅ حصة اتعملت مسبقاً (حضور مبكر لطالب) ولسه ماتفتحتش فعلياً: مانحتسبش غياب لأي حد فيها،
+    // لأن مهلتها بتتحسب من created_at (قديم) — بتبدأ تتحسب بس لما المدرس يفتحها (scheduled_only=false)
+    if (session.scheduled_only) continue;
     const thresholdMinutes = session.absence_threshold_minutes ?? 30;
     const sessionStart = new Date(session.created_at);
     const elapsedMinutes = (nowMs - sessionStart.getTime()) / 60000;
