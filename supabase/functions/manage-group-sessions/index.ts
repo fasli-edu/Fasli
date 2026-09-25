@@ -141,7 +141,15 @@ Deno.serve(async (req) => {
       }
 
       const { data: attendanceRows } = await supabase
-        .from("attendance").select("student_uid, student_name, time, status, is_absent, is_manual").eq("session_id", sessionId);
+        .from("attendance")
+        .select("student_uid, student_name, time, status, is_absent, is_manual, is_makeup, makeup_type, attended_via_group")
+        .eq("session_id", sessionId);
+      // ✅ الطلاب "الضيوف": طلاب من مجموعات تانية حضروا الحصة دي فعلياً كتعويض/حضور مبكر — صف
+      // حضورهم تابع لحصتهم الأصلية (session_id تاني)، بس attended_via_session_id بيشاور على الحصة دي
+      const { data: guestRows } = await supabase
+        .from("attendance")
+        .select("student_uid, student_name, time, group_name, session_label, makeup_type, session_id")
+        .eq("attended_via_session_id", sessionId).neq("session_id", sessionId);
 
       const studentMap: Record<string, { uid: string; name: string }> = {};
       [...(primaryStudents || []), ...secondaryStudents].forEach((s: any) => { studentMap[s.uid] = s; });
@@ -164,7 +172,18 @@ Deno.serve(async (req) => {
           present: !!att && !att.is_absent,
           time: att?.time || null,
           isManual: att?.is_manual || false,
+          // ✅ حاضر في الحصة دي "كتعويض/مبكر" بعد ما حضر فعلياً مع مجموعة تانية
+          isMakeup: !!att?.is_makeup,
+          makeupType: att?.makeup_type || null,
+          attendedViaGroup: att?.attended_via_group || null,
         };
+      });
+      (guestRows || []).forEach((g: any) => {
+        roster.push({
+          uid: g.student_uid, name: g.student_name || g.student_uid, present: true, time: g.time || null, isManual: true,
+          isMakeup: false, makeupType: null, attendedViaGroup: null,
+          isGuest: true, guestOfGroup: g.group_name, guestOfSessionLabel: g.session_label, guestType: g.makeup_type,
+        } as any);
       });
 
       return new Response(JSON.stringify({ success: true, session, data: roster }),

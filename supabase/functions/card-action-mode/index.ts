@@ -46,6 +46,181 @@ function authErrorResponse(error: unknown) {
     { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+/**
+ * ✅ سياق الحضور (مجموعة + حصة + مدرس) — مشترك بين الوضع القديم (handleSet) والمسارات (handleSetLane).
+ * Aug 2026 (Phase I follow-up 10): تحديد المجموعة والحصة إجباري قبل تفعيل الحضور لكل الحسابات (سنتر
+ * وعادي) — المدرس (instructorNameId) لسه مطلوب لحسابات السنتر بس، لأن الحساب العادي هو نفسه
+ * المدرس الوحيد.
+ */
+async function resolveAttendanceContext(
+  supabase: any, payload: TokenPayload, tokenClientId: string,
+  p: { groupName: string; instructorNameId?: number; sessionId?: number; newSessionLabel?: string; unifiedMinutes: number },
+): Promise<{ error: Response } | { instructorNameId: number | null; instructorName: string | null; sessionId: number; sessionLabel: string | null }> {
+  const { groupName, instructorNameId, sessionId, newSessionLabel, unifiedMinutes } = p;
+  const { data: teacherRow } = await supabase.from("teachers").select("is_center").eq("client_id", tokenClientId).maybeSingle();
+  const isCenter = teacherRow?.is_center === true;
+
+  if (!groupName) {
+    return { error: jsonResponse({ success: false, message: "⚠️ لازم تحدد المجموعة قبل تفعيل الحضور" }, 400) };
+  }
+
+  let resolvedInstructorId: number | null = null;
+  let resolvedInstructorName: string | null = null;
+
+  if (isCenter) {
+    if (!instructorNameId) {
+      return { error: jsonResponse({ success: false, message: "⚠️ لازم تحدد المدرس والمجموعة قبل تفعيل الحضور" }, 400) };
+    }
+    const { data: instructorRow } = await supabase.from("instructor_names").select("id, name")
+      .eq("id", instructorNameId).eq("teacher_id", tokenClientId).maybeSingle();
+    if (!instructorRow) {
+      return { error: jsonResponse({ success: false, message: "⚠️ المدرس المحدد غير موجود" }, 400) };
+    }
+    const { data: groupRow } = await supabase.from("groups").select("name, instructor_name_id")
+      .eq("name", groupName).eq("teacher_id", tokenClientId).maybeSingle();
+    if (!groupRow || groupRow.instructor_name_id !== instructorRow.id) {
+      return { error: jsonResponse({ success: false, message: "⚠️ المجموعة المحددة غير مربوطة بهذا المدرس" }, 400) };
+    }
+    resolvedInstructorId = instructorRow.id;
+    resolvedInstructorName = instructorRow.name;
+  }
+
+  // ✅ اليوم بتوقيت القاهرة — الحصة تبقى متاحة للاختيار (أو التعديل) بس لو اتنشأت النهاردة
+  const cairoNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
+  const today = cairoNow.toISOString().split("T")[0];
+
+  if (sessionId) {
+    const { data: sessionRow } = await supabase.from("attendance_sessions").select("*")
+      .eq("id", sessionId).eq("teacher_id", tokenClientId).maybeSingle();
+    if (!sessionRow || sessionRow.group_name !== groupName || sessionRow.session_date !== today) {
+      return { error: jsonResponse({ success: false, message: "⚠️ الحصة المحددة غير متاحة اليوم لهذه المجموعة" }, 400) };
+    }
+    // ✅ نحدّث وقت انتهاء الحصة المختارة (بالفعل موجودة) على القيمة الجديدة اللي المستخدم
+    // اختارها دلوقتي — موحّد مع وضع الكارت نفسه، مش قيمتها الأصلية وقت إنشائها
+    // ✅ حصة اتعملت مسبقاً (حضور مبكر لطالب) وده أول فتح فعلي ليها: بيبدأ حساب المهلة من دلوقتي
+    // ويتشال علامة "مسبقة"، عشان فحص الغياب مايحسبهاش بدأت من وقت إنشائها القديم
+    const openingUpdate = sessionRow.scheduled_only
+      ? { created_at: new Date().toISOString(), scheduled_only: false }
+      : {};
+    await supabase.from("attendance_sessions")
+      .update({ absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, ...openingUpdate })
+      .eq("id", sessionRow.id);
+    return {
+      instructorNameId: resolvedInstructorId, instructorName: resolvedInstructorName,
+      sessionId: sessionRow.id, sessionLabel: sessionRow.session_label || null,
+    };
+  }
+  if (newSessionLabel) {
+    const { data: newSession, error: newSessionError } = await supabase.from("attendance_sessions").insert({
+      teacher_id: tokenClientId, group_name: groupName, session_label: newSessionLabel,
+      instructor_name_id: resolvedInstructorId, instructor_name: resolvedInstructorName,
+      absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, session_date: today,
+      created_by_role: payload.role, created_by_id: payload.sub, created_by_name: payload.name || null,
+    }).select("id, session_label").single();
+    if (newSessionError || !newSession) {
+      return { error: jsonResponse({ success: false, message: "⚠️ تعذر إنشاء الحصة الجديدة" }, 500) };
+    }
+    return {
+      instructorNameId: resolvedInstructorId, instructorName: resolvedInstructorName,
+      sessionId: newSession.id, sessionLabel: newSession.session_label || null,
+    };
+  }
+  return { error: jsonResponse({ success: false, message: "⚠️ لازم تحدد حصة موجودة من النهاردة أو تنشئ حصة جديدة" }, 400) };
+}
+
+/** ✅ مسارات: بتتنظّف لو خلص وقتها (مش بنمسح الحصة نفسها، بس المسار) */
+async function activeLanesOf(supabase: any, teacherId: string): Promise<any[]> {
+  const nowIso = new Date().toISOString();
+  await supabase.from("card_mode_lanes").delete().eq("teacher_id", teacherId).lte("ends_at", nowIso);
+  const { data } = await supabase.from("card_mode_lanes").select("*")
+    .eq("teacher_id", teacherId).gt("ends_at", nowIso).order("created_at", { ascending: true });
+  return data || [];
+}
+
+function laneBrief(l: any) {
+  return {
+    id: l.id, groupName: l.group_name, attendance: !!l.attendance_enabled,
+    sessionId: l.session_id, sessionLabel: l.session_label,
+    instructorNameId: l.instructor_name_id, instructorName: l.instructor_name,
+    payment: l.payment_enabled ? { title: l.payment_title, amount: l.payment_amount } : null,
+    book: l.book_payment_enabled ? { id: l.book_id, amount: l.book_amount } : null,
+    endsAt: l.ends_at, remainingSeconds: Math.max(0, Math.round((new Date(l.ends_at).getTime() - Date.now()) / 1000)),
+  };
+}
+
+const LEGACY_OFF = {
+  is_enabled: false, active_instructor_name_id: null, active_group_name: null, active_session_id: null, active_session_label: null,
+};
+
+// ============================================
+// ⭐ مسارات (Lanes): إضافة/تعديل مسار لمجموعة، وإزالة مسار
+// ============================================
+async function handleSetLane(supabase: any, payload: TokenPayload, tokenClientId: string, body: any) {
+  const { modes, groupName, paymentTitle, paymentAmount, bookId, bookAmount, durationMinutes, instructorNameId, sessionId, newSessionLabel } = body;
+
+  if (!groupName) return jsonResponse({ success: false, message: "⚠️ اختر المجموعة اللي المسار ده ليها" }, 400);
+  if (!(Number(durationMinutes) > 0)) return jsonResponse({ success: false, message: "⚠️ اختر وقت انتهاء صحيح في المستقبل" }, 400);
+  const unifiedMinutes = Number(durationMinutes);
+
+  const attendanceEnabled = Array.isArray(modes) && modes.includes("attendance");
+  const paymentEnabled = Array.isArray(modes) && modes.includes("payment");
+  const bookPaymentEnabled = Array.isArray(modes) && modes.includes("book_payment");
+  if (!attendanceEnabled && !paymentEnabled && !bookPaymentEnabled) {
+    return jsonResponse({ success: false, message: "⚠️ اختر وضع واحد على الأقل" }, 400);
+  }
+  if (paymentEnabled && (!paymentTitle || paymentAmount === undefined)) {
+    return jsonResponse({ success: false, message: "⚠️ اختر بند السداد والمبلغ" }, 400);
+  }
+  if (bookPaymentEnabled && (!bookId || bookAmount === undefined)) {
+    return jsonResponse({ success: false, message: "⚠️ اختر المذكرة والمبلغ" }, 400);
+  }
+
+  // المجموعة لازم تكون تبع المدرس ده فعلاً (المسار بيتحدد بيها طلاب بيتنفّذ عليهم دفع/حضور)
+  const { data: groupRow } = await supabase.from("groups").select("name")
+    .eq("name", groupName).eq("teacher_id", tokenClientId).maybeSingle();
+  if (!groupRow) return jsonResponse({ success: false, message: "⚠️ المجموعة المحددة غير موجودة" }, 400);
+
+  let ctx: { instructorNameId: number | null; instructorName: string | null; sessionId: number | null; sessionLabel: string | null } =
+    { instructorNameId: null, instructorName: null, sessionId: null, sessionLabel: null };
+  if (attendanceEnabled) {
+    const resolved = await resolveAttendanceContext(supabase, payload, tokenClientId, { groupName, instructorNameId, sessionId, newSessionLabel, unifiedMinutes });
+    if ("error" in resolved) return resolved.error;
+    ctx = resolved;
+  }
+
+  const setByName = payload.name || (payload.role === "assistant" ? "مساعد" : "مدرس");
+  const nowIso = new Date().toISOString();
+  const { error } = await supabase.from("card_mode_lanes").upsert({
+    teacher_id: tokenClientId, group_name: groupName,
+    attendance_enabled: attendanceEnabled, session_id: ctx.sessionId, session_label: ctx.sessionLabel,
+    instructor_name_id: ctx.instructorNameId, instructor_name: ctx.instructorName,
+    payment_enabled: paymentEnabled, payment_title: paymentEnabled ? paymentTitle : null, payment_amount: paymentEnabled ? Number(paymentAmount) : null,
+    book_payment_enabled: bookPaymentEnabled, book_id: bookPaymentEnabled ? bookId : null, book_amount: bookPaymentEnabled ? Number(bookAmount) : null,
+    ends_at: new Date(Date.now() + unifiedMinutes * 60000).toISOString(), set_by: setByName, updated_at: nowIso,
+  }, { onConflict: "teacher_id,group_name" });
+  if (error) {
+    console.error("❌ فشل حفظ المسار:", error);
+    return jsonResponse({ success: false, message: "⚠️ حدث خطأ غير متوقع، حاول مرة أخرى" }, 500);
+  }
+  // المسارات والوضع القديم بيتبادلوا (مش بيشتغلوا مع بعض): أول مسار بيوقّف الوضع القديم
+  await supabase.from("card_action_mode").upsert({ teacher_id: tokenClientId, ...LEGACY_OFF, updated_at: nowIso }, { onConflict: "teacher_id" });
+
+  const labels = [];
+  if (attendanceEnabled) labels.push("تسجيل الحضور");
+  if (paymentEnabled) labels.push("دفع اشتراك");
+  if (bookPaymentEnabled) labels.push("سداد مذكرة");
+  return jsonResponse({ success: true, message: `✅ مسار "${groupName}" شغّال على: ${labels.join(" + ")} — هينتهي بعد ${unifiedMinutes} دقيقة` });
+}
+
+async function handleRemoveLane(supabase: any, tokenClientId: string, body: any) {
+  if (!body.groupName) return jsonResponse({ success: false, message: "⚠️ اختر المجموعة" }, 400);
+  await supabase.from("card_mode_lanes").delete().eq("teacher_id", tokenClientId).eq("group_name", body.groupName);
+  return jsonResponse({ success: true, message: `⏸ تم إيقاف مسار "${body.groupName}"` });
+}
+
 // ============================================
 // ⭐ العملية 1: قراءة الوضع الحالي (مع الرجوع التلقائي لحضور بس بعد انتهاء المدة)
 // ============================================
@@ -68,6 +243,21 @@ async function handleGet(supabase: any, tokenClientId: string) {
       return new Response(JSON.stringify({ success: true, readerEnabled: true, modes: [], isEnabled: false, pendingRegistration: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+  }
+
+  // ✅ مسارات نشطة؟ هي المرجع (والوضع القديم متوقف لحد ما المسارات تخلص كلها)
+  const lanes = await activeLanesOf(supabase, tokenClientId);
+  if (lanes.length > 0) {
+    const laneModes = new Set<string>();
+    lanes.forEach((l) => {
+      if (l.attendance_enabled) laneModes.add("attendance");
+      if (l.payment_enabled) laneModes.add("payment");
+      if (l.book_payment_enabled) laneModes.add("book_payment");
+    });
+    return jsonResponse({
+      success: true, readerEnabled: true, modes: Array.from(laneModes), isEnabled: true, pendingRegistration: false,
+      lanes: lanes.map(laneBrief),
+    });
   }
 
   const { data: mode } = await supabase.from("card_action_mode").select("*").eq("teacher_id", tokenClientId).maybeSingle();
@@ -156,6 +346,8 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
   // خالص أصلاً (مفيش وقت انتهاء لطلب إيقاف)، فلو فحص durationMinutes سبقه كان هيرفض الإيقاف
   // نفسه برسالة "اختر وقت انتهاء" غلط تمامًا
   if (isEnabled === false) {
+    // ✅ "إيقاف الكل" بيوقف المسارات كمان
+    await supabase.from("card_mode_lanes").delete().eq("teacher_id", tokenClientId);
     const { error: disableError } = await supabase.from("card_action_mode").upsert({
       teacher_id: tokenClientId, is_enabled: false, updated_at: new Date().toISOString(),
       active_instructor_name_id: null, active_group_name: null, active_session_id: null, active_session_label: null,
@@ -200,87 +392,20 @@ async function handleSet(supabase: any, payload: TokenPayload, tokenClientId: st
   // مفيش داعي أصلاً لأي حصة (attendance_sessions)، فيقدر يفعّل دفع/مذكرة بس بوقت انتهاء
   // موحّد من غير ما يُجبر يختار مجموعة وحصة كانوا أصلاً بيخدموا تسجيل الحضور تحديدًا
   if (attendanceEnabled) {
-    // ✅ Aug 2026 (Phase I follow-up 10): تحديد المجموعة والحصة بقى مطلوب إجباري قبل
-    // تفعيل القارئ لكل الحسابات (سنتر وعادي) — المدرس (instructorNameId) لسه مطلوب
-    // لحسابات السنتر بس، لأن الحساب العادي هو نفسه المدرس الوحيد
-    const { data: teacherRow } = await supabase.from("teachers").select("is_center").eq("client_id", tokenClientId).maybeSingle();
-    const isCenter = teacherRow?.is_center === true;
-
-    if (!groupName) {
-      return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد المجموعة قبل تفعيل الحضور" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    let resolvedInstructorId: number | null = null;
-    let resolvedInstructorName: string | null = null;
-
-    if (isCenter) {
-      if (!instructorNameId) {
-        return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد المدرس والمجموعة قبل تفعيل الحضور" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      const { data: instructorRow } = await supabase.from("instructor_names").select("id, name")
-        .eq("id", instructorNameId).eq("teacher_id", tokenClientId).maybeSingle();
-      if (!instructorRow) {
-        return new Response(JSON.stringify({ success: false, message: "⚠️ المدرس المحدد غير موجود" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      const { data: groupRow } = await supabase.from("groups").select("name, instructor_name_id")
-        .eq("name", groupName).eq("teacher_id", tokenClientId).maybeSingle();
-      if (!groupRow || groupRow.instructor_name_id !== instructorRow.id) {
-        return new Response(JSON.stringify({ success: false, message: "⚠️ المجموعة المحددة غير مربوطة بهذا المدرس" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      resolvedInstructorId = instructorRow.id;
-      resolvedInstructorName = instructorRow.name;
-    }
-
-    // ✅ اليوم بتوقيت القاهرة — الحصة تبقى متاحة للاختيار (أو التعديل) بس لو اتنشأت النهاردة
-    const cairoNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
-    const today = cairoNow.toISOString().split("T")[0];
-
-    if (sessionId) {
-      const { data: sessionRow } = await supabase.from("attendance_sessions").select("*")
-        .eq("id", sessionId).eq("teacher_id", tokenClientId).maybeSingle();
-      if (!sessionRow || sessionRow.group_name !== groupName || sessionRow.session_date !== today) {
-        return new Response(JSON.stringify({ success: false, message: "⚠️ الحصة المحددة غير متاحة اليوم لهذه المجموعة" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      activeSessionId = sessionRow.id;
-      activeSessionLabel = sessionRow.session_label || null;
-      // ✅ نحدّث وقت انتهاء الحصة المختارة (بالفعل موجودة) على القيمة الجديدة اللي المستخدم
-      // اختارها دلوقتي — موحّد مع وضع الكارت نفسه، مش قيمتها الأصلية وقت إنشائها
-      // ✅ حصة اتعملت مسبقاً (حضور مبكر لطالب) وده أول فتح فعلي ليها: بيبدأ حساب المهلة من دلوقتي
-      // ويتشال علامة "مسبقة"، عشان فحص الغياب مايحسبهاش بدأت من وقت إنشائها القديم
-      const openingUpdate = sessionRow.scheduled_only
-        ? { created_at: new Date().toISOString(), scheduled_only: false }
-        : {};
-      await supabase.from("attendance_sessions")
-        .update({ absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, ...openingUpdate })
-        .eq("id", activeSessionId);
-    } else if (newSessionLabel) {
-      const { data: newSession, error: newSessionError } = await supabase.from("attendance_sessions").insert({
-        teacher_id: tokenClientId, group_name: groupName, session_label: newSessionLabel,
-        instructor_name_id: resolvedInstructorId, instructor_name: resolvedInstructorName,
-        absence_threshold_minutes: unifiedMinutes, duration_minutes: unifiedMinutes, session_date: today,
-        created_by_role: payload.role, created_by_id: payload.sub, created_by_name: payload.name || null,
-      }).select("id, session_label").single();
-      if (newSessionError || !newSession) {
-        return new Response(JSON.stringify({ success: false, message: "⚠️ تعذر إنشاء الحصة الجديدة" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      activeSessionId = newSession.id;
-      activeSessionLabel = newSession.session_label || null;
-    } else {
-      return new Response(JSON.stringify({ success: false, message: "⚠️ لازم تحدد حصة موجودة من النهاردة أو تنشئ حصة جديدة" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    activeInstructorNameId = resolvedInstructorId;
+    const attendanceCtx = await resolveAttendanceContext(supabase, payload, tokenClientId, {
+      groupName, instructorNameId, sessionId, newSessionLabel, unifiedMinutes,
+    });
+    if ("error" in attendanceCtx) return attendanceCtx.error;
+    activeInstructorNameId = attendanceCtx.instructorNameId;
     activeGroupName = groupName;
+    activeSessionId = attendanceCtx.sessionId;
+    activeSessionLabel = attendanceCtx.sessionLabel;
   }
 
   const setByName = payload.name || (payload.role === "assistant" ? "مساعد" : "مدرس");
+
+  // ✅ الوضع القديم (مجموعة واحدة) بيحل محل أي مسارات موجودة — الاتنين مش بيشتغلوا مع بعض
+  await supabase.from("card_mode_lanes").delete().eq("teacher_id", tokenClientId);
 
   const { error } = await supabase.from("card_action_mode").upsert({
     teacher_id: tokenClientId, is_enabled: true,
@@ -344,6 +469,16 @@ Deno.serve(async (req) => {
       await requireTeacherPlanPermission(tokenClientId, "can_use_rfid");
       await requireAssistantPermission(payload, "manage_card_mode");
       return await handleSet(supabase, payload, tokenClientId, body);
+    }
+
+    if (action === "setLane") {
+      await requireTeacherPlanPermission(tokenClientId, "can_use_rfid");
+      await requireAssistantPermission(payload, "manage_card_mode");
+      return await handleSetLane(supabase, payload, tokenClientId, body);
+    }
+    if (action === "removeLane") {
+      await requireAssistantPermission(payload, "manage_card_mode");
+      return await handleRemoveLane(supabase, tokenClientId, body);
     }
 
     return new Response(JSON.stringify({ success: false, message: "⚠️ action غير معروفة" }),

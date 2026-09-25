@@ -103,6 +103,30 @@ function sessionHasPassed(s: any, today: string, nowMs: number): boolean {
   return (nowMs - new Date(s.created_at).getTime()) / 60000 >= threshold;
 }
 
+// المسار/الحصة اللي الطالب مرّر كارته فيها فعلياً (اللي التعويض/الحضور المبكر بيتم بسببها):
+// - قرارات قديمة (سياق واحد): active_* في الصف نفسه
+// - قرارات المسارات: من context.lanes (مسارات الحضور بس)؛ لو أكتر من مسار حضور لازم laneGroup يتحدد
+type Visited = { groupName: string; sessionId: number | null; sessionLabel: string | null; instructorNameId: number | null; instructorName: string | null };
+function attendanceLanesOf(decision: any): any[] {
+  const lanes = (decision.context as any)?.lanes;
+  return Array.isArray(lanes) ? lanes.filter((l: any) => l.attendance) : [];
+}
+function visitedOf(decision: any, laneGroup?: string | null): Visited | null {
+  const hasLanes = Array.isArray((decision.context as any)?.lanes);
+  if (hasLanes) {
+    const att = attendanceLanesOf(decision);
+    const pick = laneGroup ? att.find((l: any) => l.groupName === laneGroup) : (att.length === 1 ? att[0] : null);
+    return pick
+      ? { groupName: pick.groupName, sessionId: pick.sessionId ?? null, sessionLabel: pick.sessionLabel ?? null,
+          instructorNameId: pick.instructorNameId ?? null, instructorName: pick.instructorName ?? null }
+      : null;
+  }
+  return decision.active_group_name
+    ? { groupName: decision.active_group_name, sessionId: decision.active_session_id, sessionLabel: decision.active_session_label,
+        instructorNameId: decision.active_instructor_name_id, instructorName: decision.active_instructor_name }
+    : null;
+}
+
 async function loadOwnedDecision(supabase: any, teacherId: string, decisionId: number) {
   const { data } = await supabase.from("pending_attendance_decisions").select("*")
     .eq("id", decisionId).eq("teacher_id", teacherId).maybeSingle();
@@ -155,16 +179,28 @@ Deno.serve(async (req) => {
       if (!student) return json({ success: false, message: "⚠️ الطالب غير موجود" }, 404);
       const homeGroups = await homeGroupsOf(supabase, student.uid, student.group_name);
 
+      const attLanes = attendanceLanesOf(decision);
+      const visited = visitedOf(decision, body?.laneGroup ? String(body.laneGroup) : null);
+      // مفيش حصة زارها (مثلاً كل المسارات دفع بس)، أو فيه أكتر من مسار حضور والمستخدم لسه مختارش: مفيش قوايم
+      if (!visited) {
+        return json({
+          success: true, student: { uid: student.uid, name: student.name, groupName: student.group_name },
+          homeGroups, today, pastSessions: [], futureSessions: [], needLane: attLanes.length > 1,
+          visitedLanes: attLanes.map((l: any) => ({ groupName: l.groupName, sessionLabel: l.sessionLabel, instructorName: l.instructorName })),
+          activeInstructorName: null,
+        });
+      }
+
       const lookbackStart = addDays(today, -MAKEUP_LOOKBACK_DAYS);
       let sessionsQuery = supabase.from("attendance_sessions").select("*")
         .eq("teacher_id", teacherId).in("group_name", homeGroups)
         .gte("session_date", lookbackStart).lte("session_date", addDays(today, MAX_FUTURE_DAYS))
         .order("session_date", { ascending: false }).limit(200);
-      sessionsQuery = decision.active_instructor_name_id
-        ? sessionsQuery.eq("instructor_name_id", decision.active_instructor_name_id)
+      sessionsQuery = visited.instructorNameId
+        ? sessionsQuery.eq("instructor_name_id", visited.instructorNameId)
         : sessionsQuery.is("instructor_name_id", null);
       const { data: sessions } = await sessionsQuery;
-      const candidates = (sessions || []).filter((s: any) => s.id !== decision.active_session_id);
+      const candidates = (sessions || []).filter((s: any) => s.id !== visited.sessionId);
 
       const { data: rows } = candidates.length
         ? await supabase.from("attendance").select("id, session_id, is_absent, status")
@@ -188,7 +224,9 @@ Deno.serve(async (req) => {
       return json({
         success: true,
         student: { uid: student.uid, name: student.name, groupName: student.group_name },
-        homeGroups, activeInstructorName: decision.active_instructor_name || null, today,
+        homeGroups, activeInstructorName: visited.instructorName || null, today,
+        visitedLanes: attLanes.map((l: any) => ({ groupName: l.groupName, sessionLabel: l.sessionLabel, instructorName: l.instructorName })),
+        visitedGroup: visited.groupName,
         pastSessions: past, futureSessions: future,
       });
     }
@@ -196,7 +234,7 @@ Deno.serve(async (req) => {
     // ============ resolve ============
     if (action === "resolve") {
       const resolution = String(body?.resolution || "");
-      if (!["reject", "makeup_past", "early_future"].includes(resolution)) {
+      if (!["reject", "makeup_past", "early_future", "run_lane"].includes(resolution)) {
         return json({ success: false, message: "⚠️ قرار غير معروف" }, 400);
       }
 
@@ -212,6 +250,45 @@ Deno.serve(async (req) => {
       if (resolution === "reject") return json({ success: true, message: "تم رفض الطلب" });
 
       // لو التنفيذ فشل، بنرجّع الطلب معلّق ومدّة جديدة بدل ما يتحسم من غير ما يحصل حاجة فعلاً
+      const revertEarly = async () => {
+        await supabase.from("pending_attendance_decisions").update({
+          status: "pending", resolution: null, resolved_by_role: null, resolved_by_id: null, resolved_by_name: null,
+          resolved_at: null, expires_at: new Date(Date.now() + 3 * 60000).toISOString(),
+        }).eq("id", decisionId);
+      };
+
+      // ============ run_lane: تنفيذ مسار معيّن (مسارين للطالب، أو دفع/مذكرة استثنائي لطالب من برّه المسار) ============
+      // بيتم بنداء داخلي لـrecord-attendance نفسها (بنفس منطق المسحة الحقيقية بالظبط: قفل الدفع، منع
+      // التكرار، الإشعارات...) بدل ما نكرّره هنا
+      if (resolution === "run_lane") {
+        const laneGroup = String(body?.laneGroup || "");
+        const lanes = (claimed.context as any)?.lanes;
+        if (!laneGroup || !Array.isArray(lanes) || !lanes.some((l: any) => l.groupName === laneGroup)) {
+          await revertEarly();
+          return json({ success: false, message: "⚠️ اختار المسار المراد تنفيذه" }, 400);
+        }
+        try {
+          const { data: teacherDev } = await supabase.from("teachers").select("device_secret").eq("client_id", teacherId).maybeSingle();
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/record-attendance`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "x-internal-key": serviceKey },
+            body: JSON.stringify({ clientId: teacherId, uid: claimed.card_uid || claimed.student_uid, secret: teacherDev?.device_secret, forceLaneGroup: laneGroup }),
+          });
+          const out = await r.json().catch(() => ({}));
+          // نجاح، أو "اتسجّل قبل كده" (تكرار) — الاتنين قرار نفّذ أثره فعلاً
+          if (out.success || out.message === "DUPLICATE_IGNORE") {
+            return json({ success: true, message: out.success ? `✅ ${out.message}` : "ℹ️ الطالب متسجّل في المسار ده بالفعل" });
+          }
+          await revertEarly();
+          return json({ success: false, message: out.message || "⚠️ تعذر تنفيذ المسار" }, 400);
+        } catch (e) {
+          await revertEarly();
+          console.error("❌ فشل تنفيذ المسار:", e);
+          return json({ success: false, message: "⚠️ حصل خطأ أثناء التنفيذ، الطلب رجع للانتظار" }, 500);
+        }
+      }
+
       const revert = async () => {
         await supabase.from("pending_attendance_decisions").update({
           status: "pending", resolution: null, resolved_by_role: null, resolved_by_id: null, resolved_by_name: null,
@@ -228,13 +305,15 @@ Deno.serve(async (req) => {
 
         const now = new Date();
         const timeStr = now.toLocaleTimeString("ar-EG", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit" });
-        const visitedGroup = claimed.active_group_name as string;
-        const visitedLabel = claimed.active_session_label ? ` (${claimed.active_session_label})` : "";
+        const visited = visitedOf(claimed, body?.laneGroup ? String(body.laneGroup) : null);
+        if (!visited) return await fail("⚠️ مفيش حصة حضور نشطة تتعوّض بيها — اختار المسار");
+        const visitedGroup = visited.groupName;
+        const visitedLabel = visited.sessionLabel ? ` (${visited.sessionLabel})` : "";
         const baseFields = {
           student_uid: student.uid, student_name: student.name, teacher_id: teacherId,
           time: timeStr, status: "present", is_absent: false, is_manual: true,
-          instructor_name_id: claimed.active_instructor_name_id, instructor_name: claimed.active_instructor_name,
-          is_makeup: true, attended_via_group: visitedGroup, attended_via_session_id: claimed.active_session_id,
+          instructor_name_id: visited.instructorNameId, instructor_name: visited.instructorName,
+          is_makeup: true, attended_via_group: visitedGroup, attended_via_session_id: visited.sessionId,
         };
         let targetSession: any = null;
         let notifTitle = "";
@@ -249,7 +328,7 @@ Deno.serve(async (req) => {
           const { data: s } = await supabase.from("attendance_sessions").select("*")
             .eq("id", Number(body?.targetSessionId)).eq("teacher_id", teacherId).maybeSingle();
           if (!s || !homeGroups.includes(s.group_name)) return await fail("⚠️ الحصة المحددة غير صالحة للتعويض");
-          if (!sameInstructor(s.instructor_name_id, claimed.active_instructor_name_id)) {
+          if (!sameInstructor(s.instructor_name_id, visited.instructorNameId)) {
             return await fail("⛔ التعويض لازم يكون مع نفس المدرس في الحصتين");
           }
           if (s.session_date < addDays(today, -MAKEUP_LOOKBACK_DAYS) || !sessionHasPassed(s, today, nowMs)) {
@@ -281,7 +360,7 @@ Deno.serve(async (req) => {
             const { data: s } = await supabase.from("attendance_sessions").select("*")
               .eq("id", Number(body.targetSessionId)).eq("teacher_id", teacherId).maybeSingle();
             if (!s || !homeGroups.includes(s.group_name)) return await fail("⚠️ الحصة المحددة غير صالحة");
-            if (!sameInstructor(s.instructor_name_id, claimed.active_instructor_name_id)) {
+            if (!sameInstructor(s.instructor_name_id, visited.instructorNameId)) {
               return await fail("⛔ لازم يكون نفس المدرس في الحصتين");
             }
             if (sessionHasPassed(s, today, nowMs) || !(s.scheduled_only || s.session_date > today)) {
@@ -299,7 +378,7 @@ Deno.serve(async (req) => {
             if (!newLabel) return await fail("⚠️ اكتب اسم الحصة القادمة");
             const { data: created, error: createError } = await supabase.from("attendance_sessions").insert({
               teacher_id: teacherId, group_name: newGroup, session_label: newLabel, session_date: newDate,
-              instructor_name_id: claimed.active_instructor_name_id, instructor_name: claimed.active_instructor_name,
+              instructor_name_id: visited.instructorNameId, instructor_name: visited.instructorName,
               absence_threshold_minutes: 30, scheduled_only: true,
               created_by_role: payload.role, created_by_id: String(payload.sub), created_by_name: payload.name || null,
             }).select("*").single();
@@ -324,7 +403,7 @@ Deno.serve(async (req) => {
         const details = {
           student_name: student.name, time: timeStr, date: today, makeup_type: resolution === "makeup_past" ? "past" : "early",
           target_session_label: targetSession.session_label, target_session_date: targetSession.session_date,
-          target_group: targetSession.group_name, attended_group: visitedGroup, attended_session_label: claimed.active_session_label,
+          target_group: targetSession.group_name, attended_group: visitedGroup, attended_session_label: visited.sessionLabel,
         };
         await supabase.from("notifications").insert([
           ...(student.parent_phone ? [{

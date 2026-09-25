@@ -164,31 +164,34 @@ async function withScanLock<T>(
   }
 }
 
-// ✅ تسجيل طلب "بانتظار قرار" لطالب مش تابع لمجموعة الحصة الشغّالة (بدل الرفض المباشر).
-// - لو نفس الطالب له قرار سابق على نفس الحصة: اتقبل → بنقول "اتسجّل بالفعل"، واترفض من أقل
-//   من دقيقتين → بنرفض بسرعة من غير ما نفتح نافذة تانية (الرفض بيخص الطالب ده بس، مش بيمنع
+// ✅ تسجيل طلب "بانتظار قرار" لطالب مش تابع لمجموعة الحصة/المسار الشغّال، أو ليه أكتر من مسار
+// نشط (بدل الرفض/التنفيذ المباشر). لا بيتنفّذ أي حاجة (حضور/دفع) قبل قرار المدرس/المساعد.
+// - لو نفس الطالب له قرار سابق (نفس الحصة): اتقبل (خلال 12 ساعة) → "اتسجّل بالفعل"، واترفض من
+//   أقل من دقيقتين → بنرفض بسرعة من غير ما نفتح نافذة تانية (الرفض بيخص الطالب ده بس، مش بيمنع
 //   أي طالب تاني ولا بيوقف القارئ)
 // - لو له طلب معلّق بالفعل: مانكرّرش الطلب، بنرد "بانتظار القرار"
 async function queueAttendanceDecision(
   supabase: any, teacherId: string, student: { uid: string; name: string; group_name: string | null },
   scannedCardUid: string | undefined,
-  ctx: { groupName: string; sessionId: number | null; sessionLabel: string | null; instructorNameId: number | null; instructorName: string | null },
-  reason: string,
+  ctx: { groupName: string | null; sessionId: number | null; sessionLabel: string | null; instructorNameId: number | null; instructorName: string | null },
+  reason: string, context?: unknown,
 ): Promise<{ status: number; body: any }> {
   const REJECT_MEMORY_MS = 2 * 60 * 1000;
+  const APPROVE_MEMORY_MS = 12 * 60 * 60 * 1000;
   const PENDING_TTL_MS = 5 * 60 * 1000;
 
   let lastQuery = supabase.from("pending_attendance_decisions").select("status, resolution, resolved_at")
-    .eq("teacher_id", teacherId).eq("student_uid", student.uid).in("status", ["approved", "rejected"])
+    .eq("teacher_id", teacherId).eq("student_uid", student.uid).eq("reason", reason).in("status", ["approved", "rejected"])
     .order("resolved_at", { ascending: false }).limit(1);
   lastQuery = ctx.sessionId ? lastQuery.eq("active_session_id", ctx.sessionId) : lastQuery.is("active_session_id", null);
   const { data: lastRows } = await lastQuery;
   const last = lastRows?.[0];
-  if (last?.status === "approved") {
+  const lastAge = last?.resolved_at ? Date.now() - new Date(last.resolved_at).getTime() : Infinity;
+  if (last?.status === "approved" && lastAge < APPROVE_MEMORY_MS) {
     return { status: 409, body: { success: false, message: "DUPLICATE_IGNORE", detail: "سبق تسجيل قرار لهذا الطالب في هذه الحصة" } };
   }
-  if (last?.status === "rejected" && last.resolved_at && Date.now() - new Date(last.resolved_at).getTime() < REJECT_MEMORY_MS) {
-    return { status: 403, body: { success: false, message: `⛔ ${student.name} اترفض من المدرس لهذه الحصة`, code: "DECISION_REJECTED" } };
+  if (last?.status === "rejected" && lastAge < REJECT_MEMORY_MS) {
+    return { status: 403, body: { success: false, message: `⛔ ${student.name} اترفض من المدرس`, code: "DECISION_REJECTED" } };
   }
 
   // طلب معلّق قديم انتهى وقته لازم يتقفل الأول، وإلا الفهرس الفريد (طلب معلّق واحد للطالب) هيمنع الجديد
@@ -199,16 +202,92 @@ async function queueAttendanceDecision(
     teacher_id: teacherId, student_uid: student.uid, student_name: student.name, home_group_name: student.group_name,
     card_uid: scannedCardUid || null, active_group_name: ctx.groupName, active_session_id: ctx.sessionId,
     active_session_label: ctx.sessionLabel, active_instructor_name_id: ctx.instructorNameId, active_instructor_name: ctx.instructorName,
-    reason, expires_at: new Date(Date.now() + PENDING_TTL_MS).toISOString(),
+    reason, context: context ?? null, expires_at: new Date(Date.now() + PENDING_TTL_MS).toISOString(),
   });
   // 23505 = فيه طلب معلّق فعلاً لنفس الطالب (تكرار مسح أثناء الانتظار) — مش خطأ
   if (error && error.code !== "23505") {
     console.error("⚠️ فشل تسجيل طلب قرار الحضور:", error.message);
     return { status: 500, body: { success: false, message: "⚠️ تعذر تسجيل الطلب، حاول تاني" } };
   }
+  const waiting = reason === "multi_lane"
+    ? `⏳ ${student.name} في أكتر من مسار نشط — بانتظار قرار المدرس`
+    : ctx.groupName
+      ? `⏳ ${student.name} مش مسجّل في مجموعة "${ctx.groupName}" — بانتظار قرار المدرس`
+      : `⏳ ${student.name} مش تابع لأي مسار نشط — بانتظار قرار المدرس`;
+  return { status: 202, body: { success: false, code: "NEEDS_DECISION", message: waiting } };
+}
+
+// ✅ تحديد مسار الكارت من مجموعة الطالب (لما فيه مسارات نشطة). بيرجّع:
+//   { response }     → طلب قرار اتسجّل (مسارين / خارج كل المسارات) أو خطأ — الرد جاهز يترجع للقارئ
+//   { cardModeLike } → نفس شكل صف card_action_mode بس مبني من المسار، فباقي المعالجة (دفع/مذكرة/حضور)
+//                       بتشتغل من غير ولا تعديل عليها
+// forceLaneGroup (نداء داخلي من attendance-decisions بعد قرار المدرس): بينفّذ المسار ده تحديداً،
+// ولو الطالب مش تابع لمجموعته بيتنفّذ الدفع/المذكرة بس (الحضور ليه مسار تعويض/حضور مبكر منفصل)
+async function resolveLaneForStudent(
+  supabase: any, teacherId: string, studentUid: string, scannedCardUid: string | undefined,
+  lanes: any[], forceLaneGroup: string | null,
+): Promise<{ response: Response } | { cardModeLike: any }> {
+  const respond = (status: number, body: unknown) =>
+    ({ response: new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }) });
+
+  const [{ data: stu }, { data: links }] = await Promise.all([
+    supabase.from("students").select("uid, name, group_name").eq("uid", studentUid).eq("teacher_id", teacherId).maybeSingle(),
+    supabase.from("student_group_links").select("group_name").eq("student_uid", studentUid),
+  ]);
+  if (!stu) return respond(404, { success: false, message: "⚠️ الكارت ده مش مربوط بأي طالب عندك" });
+  const homeGroups = Array.from(new Set([stu.group_name, ...(links || []).map((l: any) => l.group_name)].filter(Boolean)));
+
+  let lane: any = null;
+  let isMember = false;
+  if (forceLaneGroup) {
+    lane = lanes.find((l) => l.group_name === forceLaneGroup);
+    if (!lane) return respond(409, { success: false, message: "⏱ المسار ده انتهى وقته" });
+    isMember = homeGroups.includes(lane.group_name);
+  } else {
+    const candidates = lanes.filter((l) => homeGroups.includes(l.group_name));
+    if (candidates.length === 1) {
+      lane = candidates[0];
+      isMember = true;
+    } else {
+      const reason = candidates.length > 1 ? "multi_lane" : "no_lane";
+      const shown = candidates.length > 1 ? candidates : lanes;
+      const brief = (l: any) => ({
+        groupName: l.group_name, attendance: !!l.attendance_enabled, sessionId: l.session_id, sessionLabel: l.session_label,
+        instructorNameId: l.instructor_name_id, instructorName: l.instructor_name,
+        payment: l.payment_enabled ? { title: l.payment_title, amount: l.payment_amount } : null,
+        book: l.book_payment_enabled ? { id: l.book_id, amount: l.book_amount } : null,
+      });
+      const primary = shown.find((l) => l.attendance_enabled) || shown[0];
+      const queued = await queueAttendanceDecision(
+        supabase, teacherId, stu, scannedCardUid,
+        {
+          groupName: candidates.length > 1 ? null : (primary?.attendance_enabled ? primary.group_name : null),
+          sessionId: primary?.attendance_enabled ? primary.session_id : null,
+          sessionLabel: primary?.attendance_enabled ? primary.session_label : null,
+          instructorNameId: primary?.attendance_enabled ? primary.instructor_name_id : null,
+          instructorName: primary?.attendance_enabled ? primary.instructor_name : null,
+        },
+        reason, { lanes: shown.map(brief) },
+      );
+      return respond(queued.status, queued.body);
+    }
+  }
+
+  const attendanceOn = !!lane.attendance_enabled && isMember;
+  const nowIso = new Date().toISOString();
   return {
-    status: 202,
-    body: { success: false, code: "NEEDS_DECISION", message: `⏳ ${student.name} مش مسجّل في مجموعة "${ctx.groupName}" — بانتظار قرار المدرس` },
+    cardModeLike: {
+      is_enabled: true, laneId: lane.id,
+      attendance_enabled: attendanceOn,
+      payment_enabled: !!lane.payment_enabled, payment_title: lane.payment_title, payment_amount: lane.payment_amount,
+      book_payment_enabled: !!lane.book_payment_enabled, book_id: lane.book_id, book_amount: lane.book_amount,
+      // المسار اتفلتر بـends_at > now فوق، فالمدة هنا بس عشان فحص "الوضع الإضافي شغّال" القديم يعدّي
+      duration_minutes: 1, set_at: nowIso, updated_at: nowIso,
+      active_group_name: attendanceOn ? lane.group_name : null,
+      active_instructor_name_id: attendanceOn ? lane.instructor_name_id : null,
+      active_session_id: attendanceOn ? lane.session_id : null,
+      active_session_label: attendanceOn ? lane.session_label : null,
+    },
   };
 }
 
@@ -306,10 +385,12 @@ serve(async (req) => {
       // (البورد بيبعت لدالة submit-rfid-scan ودالة تسجيل الحضور دي كل مرة بشكل مستقل، فلازم نفس التحقق هنا كمان)
       // ✅ (أداء) الثلاث قراءات دي (الكارت/إعدادات النظام/وضع الكارت الحالي) مستقلة تمامًا عن
       // بعضها — كانت متسلسلة رغم كده، وده أكتر جزء بيتكرر في النظام كله (كل مسحة كارت)
-      const [{ data: knownCard }, { data: cardSettings }, { data: cardMode }] = await Promise.all([
+      const [{ data: knownCard }, { data: cardSettings }, { data: cardModeRow }, { data: activeLanes }] = await Promise.all([
         supabase.from("system_cards").select("id, is_active, teacher_id, center_id, student_uid").eq("card_uid", uid).maybeSingle(),
         supabase.from("system_settings").select("require_registered_cards").eq("id", 1).maybeSingle(),
         supabase.from("card_action_mode").select("*").eq("teacher_id", clientId).maybeSingle(),
+        // ✅ مسارات نشطة (لو الجدول لسه ماتعملوش migration، data بتبقى null والسلوك القديم يكمّل عادي)
+        supabase.from("card_mode_lanes").select("*").eq("teacher_id", clientId).gt("ends_at", new Date().toISOString()),
       ]);
 
       // ✅ (أمان/وظيفي حرج) uid هنا هو الكود المطبوع على الكارت الفيزيائي (card_uid)، مش بالضرورة
@@ -344,6 +425,23 @@ serve(async (req) => {
       // ✅ وضع الكارت: دلوقتي بيدعم أكتر من عملية في نفس الوقت (حضور + دفع اشتراك + سداد مذكرة مع بعض)
       // بدل ما يكون وضع واحد بس شغال — كل عملية مفعّلة بتتنفّذ لوحدها، وبعدين نكمّل لتسجيل الحضور العادي
       // (cardMode اتجاب فوق مع knownCard/cardSettings بالتوازي)
+
+      // ✅ مسارات (قارئ واحد، أكتر من مجموعة/حصة في نفس الوقت): لو فيه مسار نشط، هو المرجع —
+      // بنحدد المسار من مجموعة الطالب نفسه، وبنبني منه كائن بنفس شكل صف card_action_mode عشان باقي
+      // المعالجة (دفع/مذكرة/حضور) تفضل هي هي من غير أي تعديل. نداء داخلي (من attendance-decisions بعد
+      // قرار المدرس) بس هو اللي يقدر يفرض مسار معيّن (forceLaneGroup)
+      let cardMode: any = cardModeRow;
+      let matchedLane = false;
+      if (activeLanes && activeLanes.length > 0) {
+        const internalKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const isInternalCall = !!internalKey && req.headers.get("x-internal-key") === internalKey;
+        const laneResolution = await resolveLaneForStudent(
+          supabase, clientId, uid, body?.uid, activeLanes, isInternalCall && body?.forceLaneGroup ? String(body.forceLaneGroup) : null,
+        );
+        if ("response" in laneResolution) return laneResolution.response;
+        cardMode = laneResolution.cardModeLike;
+        matchedLane = true;
+      }
 
       // ✅ القارئ متعطّل تماماً بمعرفة المدرس نفسه — مايسجّلش أي حاجة خالص، حتى الحضور العادي
       if (!cardMode || !cardMode.is_enabled) {
@@ -390,7 +488,7 @@ serve(async (req) => {
       // قبل قرار المدرس/المساعد — بنسجّل طلب "بانتظار قرار" وبتظهر له نافذة قرار في لوحة التحكم
       // (رفض / تعويض حصة فاتت / حضور مبكر). الفحص بيتم هنا، قبل أوضاع الدفع تحت، عشان مايتسجّلش
       // بند مالي لحد قبل ما يتقرر أصلاً إنه يحضر
-      if (centerActiveContext && cardMode.attendance_enabled !== false) {
+      if (!matchedLane && centerActiveContext && cardMode.attendance_enabled !== false) {
         const [{ data: preStudent }, { data: preLink }] = await Promise.all([
           supabase.from("students").select("uid, name, group_name").eq("uid", uid).eq("teacher_id", clientId).maybeSingle(),
           supabase.from("student_group_links").select("id").eq("student_uid", uid).eq("group_name", centerActiveContext.groupName).maybeSingle(),
@@ -419,7 +517,7 @@ serve(async (req) => {
         }
 
         // ✅ نمدّد المهلة مع كل كارت ناجح، عشان يقدر يكمّل يمرّغ كروت تانية من غير ما الوضع يرجع لحضور فجأة
-        await supabase.from("card_action_mode").update({ updated_at: new Date().toISOString() }).eq("teacher_id", clientId);
+        if (!matchedLane) await supabase.from("card_action_mode").update({ updated_at: new Date().toISOString() }).eq("teacher_id", clientId);
 
         if (cardMode.payment_enabled) {
           const paymentLock = await withScanLock(supabase, clientId, uid, "payment", String(cardMode.payment_title), async () => {
