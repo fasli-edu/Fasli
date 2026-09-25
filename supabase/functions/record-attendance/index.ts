@@ -141,6 +141,29 @@ export async function sendPushToRecipient(
   }
 }
 
+// ✅ قفل قصير العمر لكل (مدرس + طالب + عملية + مفتاح) — بيمنع تنفيذ نفس الدفع/السداد مرتين لو
+// وصل كارتان لنفس الطالب في نفس اللحظة (الفحص "اقرأ ثم اكتب" لوحده مش كفاية).
+// "Fail-open" عمدًا: أي خطأ غير التعارض (مثلاً الجدول لسه متعملش له migration) بيتخطى القفل
+// ويكمّل العملية زي الأول، عشان القفل مايبقاش نقطة فشل جديدة في مسار الكارت الأساسي.
+async function withScanLock<T>(
+  supabase: any, teacherId: string, studentUid: string, op: string, opKey: string, fn: () => Promise<T>,
+): Promise<{ busy: true } | { busy: false; value: T }> {
+  const lockRow = { teacher_id: teacherId, student_uid: studentUid, op, op_key: opKey };
+  let { error } = await supabase.from("card_scan_locks").insert(lockRow);
+  if (error?.code === "23505") {
+    // قفل قديم عالق (أكتر من 30 ثانية) نتجاوزه ونحاول تاني مرة واحدة بس
+    await supabase.from("card_scan_locks").delete()
+      .match(lockRow).lt("created_at", new Date(Date.now() - 30000).toISOString());
+    ({ error } = await supabase.from("card_scan_locks").insert(lockRow));
+    if (error?.code === "23505") return { busy: true };
+  }
+  try {
+    return { busy: false, value: await fn() };
+  } finally {
+    if (!error) await supabase.from("card_scan_locks").delete().match(lockRow);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -333,44 +356,50 @@ serve(async (req) => {
         await supabase.from("card_action_mode").update({ updated_at: new Date().toISOString() }).eq("teacher_id", clientId);
 
         if (cardMode.payment_enabled) {
-          const { data: existingPayment } = await supabase
-            .from("payments").select("id").eq("student_uid", uid).eq("teacher_id", clientId).eq("title", cardMode.payment_title).maybeSingle();
-          if (existingPayment) {
-            extraActionMessages.push(`⚠️ ${modeStudent.name} مسدّد بند "${cardMode.payment_title}" بالفعل`);
-          } else {
-            const { data: titleRow } = await supabase
-              .from("payment_titles").select("default_amount").eq("teacher_id", clientId).eq("title", cardMode.payment_title).maybeSingle();
-            const realTotalAmount = titleRow?.default_amount ?? Number(cardMode.payment_amount);
-
-            if (Number(cardMode.payment_amount) > realTotalAmount) {
-              extraActionMessages.push(`⚠️ مبلغ بند "${cardMode.payment_title}" أكبر من سعره الأصلي — اتلغى`);
+          const paymentLock = await withScanLock(supabase, clientId, uid, "payment", String(cardMode.payment_title), async () => {
+            const { data: existingPayment } = await supabase
+              .from("payments").select("id").eq("student_uid", uid).eq("teacher_id", clientId).eq("title", cardMode.payment_title).maybeSingle();
+            if (existingPayment) {
+              extraActionMessages.push(`⚠️ ${modeStudent.name} مسدّد بند "${cardMode.payment_title}" بالفعل`);
             } else {
-              await supabase.from("payments").insert({
-                student_uid: uid, student_name: modeStudent.name, group_name: modeStudent.group_name, teacher_id: clientId,
-                title: cardMode.payment_title, total_amount: Number(realTotalAmount), amount: Number(cardMode.payment_amount),
-              });
-              const isPartial = Number(cardMode.payment_amount) < Number(realTotalAmount);
-              extraActionMessages.push(`💰 اتسجّل دفع "${cardMode.payment_title}"${isPartial ? " (دفعة جزئية)" : ""}`);
+              const { data: titleRow } = await supabase
+                .from("payment_titles").select("default_amount").eq("teacher_id", clientId).eq("title", cardMode.payment_title).maybeSingle();
+              const realTotalAmount = titleRow?.default_amount ?? Number(cardMode.payment_amount);
+
+              if (Number(cardMode.payment_amount) > realTotalAmount) {
+                extraActionMessages.push(`⚠️ مبلغ بند "${cardMode.payment_title}" أكبر من سعره الأصلي — اتلغى`);
+              } else {
+                await supabase.from("payments").insert({
+                  student_uid: uid, student_name: modeStudent.name, group_name: modeStudent.group_name, teacher_id: clientId,
+                  title: cardMode.payment_title, total_amount: Number(realTotalAmount), amount: Number(cardMode.payment_amount),
+                });
+                const isPartial = Number(cardMode.payment_amount) < Number(realTotalAmount);
+                extraActionMessages.push(`💰 اتسجّل دفع "${cardMode.payment_title}"${isPartial ? " (دفعة جزئية)" : ""}`);
+              }
             }
-          }
+          });
+          if (paymentLock.busy) extraActionMessages.push(`⏳ ${modeStudent.name}: بند "${cardMode.payment_title}" قيد المعالجة بالفعل`);
         }
 
         if (cardMode.book_payment_enabled) {
-          const { data: bookRow } = await supabase.from("books").select("name, price").eq("id", cardMode.book_id).maybeSingle();
-          const { data: existingBookPayment } = await supabase
-            .from("book_payments").select("id").eq("student_uid", uid).eq("teacher_id", clientId).eq("book_id", cardMode.book_id).maybeSingle();
-          if (existingBookPayment) {
-            extraActionMessages.push(`⚠️ ${modeStudent.name} مسدّد المذكرة دي بالفعل`);
-          } else if (bookRow && Number(cardMode.book_amount) > bookRow.price) {
-            extraActionMessages.push(`⚠️ مبلغ المذكرة أكبر من سعرها الأصلي — اتلغى`);
-          } else {
-            await supabase.from("book_payments").insert({
-              book_id: cardMode.book_id, student_uid: uid, student_name: modeStudent.name, group_name: modeStudent.group_name,
-              teacher_id: clientId, amount: Number(cardMode.book_amount),
-            });
-            const isPartialBook = bookRow && Number(cardMode.book_amount) < bookRow.price;
-            extraActionMessages.push(`📖 اتسجّل سداد "${bookRow?.name || "المذكرة"}"${isPartialBook ? " (دفعة جزئية)" : ""}`);
-          }
+          const bookLock = await withScanLock(supabase, clientId, uid, "book", String(cardMode.book_id), async () => {
+            const { data: bookRow } = await supabase.from("books").select("name, price").eq("id", cardMode.book_id).maybeSingle();
+            const { data: existingBookPayment } = await supabase
+              .from("book_payments").select("id").eq("student_uid", uid).eq("teacher_id", clientId).eq("book_id", cardMode.book_id).maybeSingle();
+            if (existingBookPayment) {
+              extraActionMessages.push(`⚠️ ${modeStudent.name} مسدّد المذكرة دي بالفعل`);
+            } else if (bookRow && Number(cardMode.book_amount) > bookRow.price) {
+              extraActionMessages.push(`⚠️ مبلغ المذكرة أكبر من سعرها الأصلي — اتلغى`);
+            } else {
+              await supabase.from("book_payments").insert({
+                book_id: cardMode.book_id, student_uid: uid, student_name: modeStudent.name, group_name: modeStudent.group_name,
+                teacher_id: clientId, amount: Number(cardMode.book_amount),
+              });
+              const isPartialBook = bookRow && Number(cardMode.book_amount) < bookRow.price;
+              extraActionMessages.push(`📖 اتسجّل سداد "${bookRow?.name || "المذكرة"}"${isPartialBook ? " (دفعة جزئية)" : ""}`);
+            }
+          });
+          if (bookLock.busy) extraActionMessages.push(`⏳ ${modeStudent.name}: المذكرة قيد المعالجة بالفعل`);
         }
 
         // ✅ لو الحضور مش مفعّل ضمن الأوضاع الحالية، نكتفي بالعمليات الإضافية دي بس ونوقف هنا
@@ -587,6 +616,14 @@ serve(async (req) => {
       .select()
       .single();
 
+    // ✅ فهرس التفرّد (student_uid + session_id) لو اتفعّل: كارتان في نفس اللحظة الفحص المسبق
+    // فوق بيعدّيهم الاتنين، والفهرس هو اللي بيرفض التاني — بنعامله كتكرار عادي مش خطأ
+    if (attError?.code === "23505") {
+      return new Response(
+        JSON.stringify({ success: false, message: "DUPLICATE_IGNORE" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     if (attError) throw new Error(`فشل تسجيل الحضور: ${safeErrorMessage(attError)}`);
 
     // ✅ نجيب اسم المدرس عشان يبقى واضح لولي الأمر مين اللي بعت الإشعار (مهم لو عنده أكتر من ابن عند مدرسين مختلفين)
