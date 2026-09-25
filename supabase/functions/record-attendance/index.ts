@@ -178,6 +178,9 @@ async function queueAttendanceDecision(
 ): Promise<{ status: number; body: any }> {
   const REJECT_MEMORY_MS = 2 * 60 * 1000;
   const APPROVE_MEMORY_MS = 12 * 60 * 60 * 1000;
+  // تنفيذ مسار (دفع/مذكرة) مابيسجّلش حضور، فذاكرته أقصر بكتير — بس عشان مسحة مكررة في اللحظة دي
+  // ماتفتحش نافذة تانية؛ الطالب لسه ممكن يتعوّض/يحضر مبكر بعدها بقرار جديد
+  const RUN_LANE_MEMORY_MS = 15 * 60 * 1000;
   const PENDING_TTL_MS = 5 * 60 * 1000;
 
   let lastQuery = supabase.from("pending_attendance_decisions").select("status, resolution, resolved_at")
@@ -187,7 +190,8 @@ async function queueAttendanceDecision(
   const { data: lastRows } = await lastQuery;
   const last = lastRows?.[0];
   const lastAge = last?.resolved_at ? Date.now() - new Date(last.resolved_at).getTime() : Infinity;
-  if (last?.status === "approved" && lastAge < APPROVE_MEMORY_MS) {
+  const approveMemoryMs = last?.resolution === "run_lane" ? RUN_LANE_MEMORY_MS : APPROVE_MEMORY_MS;
+  if (last?.status === "approved" && lastAge < approveMemoryMs) {
     return { status: 409, body: { success: false, message: "DUPLICATE_IGNORE", detail: "سبق تسجيل قرار لهذا الطالب في هذه الحصة" } };
   }
   if (last?.status === "rejected" && lastAge < REJECT_MEMORY_MS) {
