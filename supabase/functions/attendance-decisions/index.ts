@@ -267,6 +267,18 @@ Deno.serve(async (req) => {
           await revertEarly();
           return json({ success: false, message: "⚠️ اختار المسار المراد تنفيذه" }, 400);
         }
+        // ✅ تنفيذ مسار لطالب من برّه مجموعته (دفع/مذكرة استثنائي) عملية مالية بقرار المساعد نفسه: لازم
+        // يكون معاه صلاحية الدفع/المذكرة زي أي تسجيل دفع يدوي. الطالب العضو في المسار (حالة مسارين) مابيتطلبش
+        // ده لأن نفس المسار كان هيتنفّذ تلقائي على مسحته من غير أي قرار
+        if (payload.role === "assistant" && claimed.reason === "no_lane") {
+          const pickedLane = (lanes as any[]).find((l: any) => l.groupName === laneGroup);
+          const { data: asst } = await supabase.from("assistants").select("permissions").eq("id", payload.sub).maybeSingle();
+          const perms = asst?.permissions || {};
+          if ((pickedLane?.payment && perms.record_payments !== true) || (pickedLane?.book && perms.manage_books !== true)) {
+            await revertEarly();
+            return json({ success: false, message: "⛔ ليس لديك صلاحية تسجيل الدفع/المذكرة، تواصل مع المدرس" }, 403);
+          }
+        }
         try {
           const { data: teacherDev } = await supabase.from("teachers").select("device_secret").eq("client_id", teacherId).maybeSingle();
           const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";

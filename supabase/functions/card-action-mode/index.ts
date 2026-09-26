@@ -191,6 +191,15 @@ async function handleSetLane(supabase: any, payload: TokenPayload, tokenClientId
     ctx = resolved;
   }
 
+  // ✅ تعدد المسارات (أكتر من حصة/مجموعة شغّالة في نفس الوقت) ميزة حسابات السنتر بس. المدرس المنفرد
+  // عنده وضع واحد شغّال في المرة: تفعيل مجموعة جديدة بيحل محل اللي كانت شغّالة (بعد ما تأكدنا
+  // فوق إن الجديدة اتحفظت سليمة، عشان مانمسحش الشغّال لو الجديد فشل)
+  const { data: laneTeacher } = await supabase.from("teachers").select("is_center").eq("client_id", tokenClientId).maybeSingle();
+  const isCenterAccount = laneTeacher?.is_center === true;
+  if (!isCenterAccount) {
+    await supabase.from("card_mode_lanes").delete().eq("teacher_id", tokenClientId).neq("group_name", groupName);
+  }
+
   const setByName = payload.name || (payload.role === "assistant" ? "مساعد" : "مدرس");
   const nowIso = new Date().toISOString();
   const { error } = await supabase.from("card_mode_lanes").upsert({
@@ -212,7 +221,12 @@ async function handleSetLane(supabase: any, payload: TokenPayload, tokenClientId
   if (attendanceEnabled) labels.push("تسجيل الحضور");
   if (paymentEnabled) labels.push("دفع اشتراك");
   if (bookPaymentEnabled) labels.push("سداد مذكرة");
-  return jsonResponse({ success: true, message: `✅ مسار "${groupName}" شغّال على: ${labels.join(" + ")} — هينتهي بعد ${unifiedMinutes} دقيقة` });
+  return jsonResponse({
+    success: true, isCenter: isCenterAccount,
+    message: isCenterAccount
+      ? `✅ مسار "${groupName}" شغّال على: ${labels.join(" + ")} — هينتهي بعد ${unifiedMinutes} دقيقة`
+      : `✅ الوضع دلوقتي شغّال على "${groupName}": ${labels.join(" + ")} — هينتهي بعد ${unifiedMinutes} دقيقة`,
+  });
 }
 
 async function handleRemoveLane(supabase: any, tokenClientId: string, body: any) {

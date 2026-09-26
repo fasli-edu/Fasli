@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=61">
+  <link rel="stylesheet" href="style.css?v=63">
   <script src="activity-format.js?v=8"></script>
 </head>
 <body>
@@ -284,7 +284,7 @@
         </p>
 
         <div class="modal-section" id="cardModeLanesSection">
-          <div class="modal-section-title">📡 المسارات الشغّالة الآن</div>
+          <div class="modal-section-title" id="cardModeLanesTitle">📡 المسارات الشغّالة الآن</div>
           <div id="cardModeLanesList" class="cm-lanes"><div class="dq-muted">مفيش مسارات شغّالة دلوقتي.</div></div>
           <button class="btn btn-outline btn-sm" id="cardModeStopAllBtn" style="display:none;margin-top:8px;" onclick="stopAllCardModeLanes()">⏹ إيقاف كل المسارات</button>
         </div>
@@ -297,7 +297,7 @@
 
         <div class="modal-section" id="cardModeGroupBlock">
           <div class="modal-section-title">👥 المجموعة (إجباري لكل الأوضاع)</div>
-          <p style="font-size:12px;color:var(--gray-500);margin:0 0 10px;">
+          <p style="font-size:12px;color:var(--gray-500);margin:0 0 10px;" id="cardModeGroupHint">
             المسار بيتنفّذ تلقائي على طلاب المجموعة دي. أي طالب من برّها بتظهر لك نافذة قرار (رفض / تعويض / حضور مبكر).
           </p>
           <div style="display:flex;gap:12px;flex-wrap:wrap;">
@@ -317,9 +317,9 @@
         </div>
 
         <div class="modal-section">
-          <div class="modal-section-title">⏰ المسار ده هينتهي الساعة كام؟</div>
+          <div class="modal-section-title" id="cardModeTimeTitle">⏰ المسار ده هينتهي الساعة كام؟</div>
           <input type="time" id="cardModeEndTime">
-          <p style="font-size:12px;color:var(--gray-500);margin-top:6px;">
+          <p style="font-size:12px;color:var(--gray-500);margin-top:6px;" id="cardModeTimeHint">
             لازم تكون بعد الوقت دلوقتي. بعدها المسار ده بس بيتوقف (باقي المسارات مش بتتأثر)، وتسجيل الحضور بيتقفل على حصته كمان.
           </p>
         </div>
@@ -2131,6 +2131,7 @@ async function openCardModeModal() {
   // كل القيم الأول (والمودال لسه "مقفول" في نظر الحارس ده)، وبعدين نظهره أخر خطوة
   const isCenter = sessionStorage.getItem('isCenter') === 'true';
   document.getElementById('cardModeInstructorField').style.display = isCenter ? '' : 'none';
+  applyCardModeAccountTexts();
   // ✅ (فِكس) دول كانوا بيتنادوا من غير await، فـrefreshCardModeStatus() تحت كانت ممكن تحاول
   // تحدد بند السداد/المذكرة المحفوظين قبل ما قوائمهم تتحمّل أصلاً — الاختيار كان بيفشل بصمت
   // (قيمة مالهاش وجود جوه <select> لسه) فتفضل القائمة على "-- اختر --" رغم إن فيه وضع محفوظ
@@ -2785,6 +2786,53 @@ async function restoreCardModeContextSelection(instructorNameId, groupName, sess
 // ============================================
 // ✅ مسارات وضع الكارت: قايمة المسارات الشغّالة + تعديل/إيقاف كل مسار
 // ============================================
+// ============================================
+// ✅ تعدد المسارات (أكتر من حصة/مجموعة شغّالة في نفس الوقت) ميزة حسابات السنتر بس؛ المدرس المنفرد
+// عنده وضع واحد شغّال في المرة (تفعيل مجموعة جديدة بيحل محل اللي كانت شغّالة) — فالنصوص بتختلف
+// ============================================
+function cardModeIsCenter() { return sessionStorage.getItem('isCenter') === 'true'; }
+function cardModeTexts() {
+  return cardModeIsCenter() ? {
+    lanesTitle: '📡 المسارات الشغّالة الآن',
+    empty: 'مفيش مسارات شغّالة دلوقتي.',
+    addTitle: '➕ إضافة مسار جديد',
+    editTitle: '✏️ تعديل مسار',
+    saveBtn: 'حفظ المسار',
+    stopAll: '⏹ إيقاف كل المسارات',
+    stopped: 'تم إيقاف كل المسارات',
+    groupHint: 'المسار بيتنفّذ تلقائي على طلاب المجموعة دي. أي طالب من برّها بتظهر لك نافذة قرار (رفض / تعويض / حضور مبكر). تقدر تضيف مسارات لمجموعات تانية في نفس الوقت.',
+    timeTitle: '⏰ المسار ده هينتهي الساعة كام؟',
+    timeHint: 'لازم تكون بعد الوقت دلوقتي. بعدها المسار ده بس بيتوقف (باقي المسارات مش بتتأثر)، وتسجيل الحضور بيتقفل على حصته كمان.',
+  } : {
+    lanesTitle: '📡 الوضع الشغّال الآن',
+    empty: 'مفيش وضع شغّال دلوقتي.',
+    addTitle: '⚙️ تفعيل وضع جديد (بيحل محل الشغّال حاليًا)',
+    editTitle: '✏️ تعديل الوضع الشغّال',
+    saveBtn: 'تفعيل الوضع',
+    stopAll: '⏹ إيقاف الوضع',
+    stopped: 'تم إيقاف الوضع',
+    groupHint: 'الوضع بيتنفّذ تلقائي على طلاب المجموعة دي. أي طالب من برّها بتظهر لك نافذة قرار (رفض / تعويض / حضور مبكر).',
+    timeTitle: '⏰ الوضع ده هينتهي الساعة كام؟',
+    timeHint: 'لازم تكون بعد الوقت دلوقتي. بعدها الوضع بيتوقف تلقائيًا، وتسجيل الحضور بيتقفل على حصته كمان.',
+  };
+}
+function applyCardModeAccountTexts() {
+  const t = cardModeTexts();
+  const set = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  set('cardModeLanesTitle', t.lanesTitle);
+  set('cardModeGroupHint', t.groupHint);
+  set('cardModeTimeTitle', t.timeTitle);
+  set('cardModeTimeHint', t.timeHint);
+  set('cardModeStopAllBtn', t.stopAll);
+  const list = document.getElementById('cardModeLanesList');
+  if (list && !list.querySelector('.cm-lane')) list.innerHTML = '<div class="dq-muted">' + t.empty + '</div>';
+  const editing = /^✏️/.test((document.getElementById('cardModeFormTitle') || {}).textContent || '');
+  if (!editing) {
+    set('cardModeFormTitle', t.addTitle);
+    set('cardModeSaveBtn', t.saveBtn);
+  }
+}
+
 let cardModeCurrentLanes = [];
 
 // المسارات الفعلية من رد get. لو مفيش مسارات بس الوضع القديم (مجموعة واحدة) شغّال، بنعرضه كمسار واحد
@@ -2815,9 +2863,10 @@ function renderCardModeLanes(result) {
   if (!listEl) return;
   cardModeCurrentLanes = cardModeLaneList(result);
   const stopAll = document.getElementById('cardModeStopAllBtn');
-  if (stopAll) stopAll.style.display = cardModeCurrentLanes.length ? '' : 'none';
+  // "إيقاف الكل" مالوش لازمة غير للسنتر لما يبقى فيه أكتر من مسار؛ غير كده زر "إيقاف" المسار نفسه كفاية
+  if (stopAll) stopAll.style.display = (cardModeIsCenter() && cardModeCurrentLanes.length > 1) ? '' : 'none';
   if (!cardModeCurrentLanes.length) {
-    listEl.innerHTML = '<div class="dq-muted">مفيش مسارات شغّالة دلوقتي.</div>';
+    listEl.innerHTML = '<div class="dq-muted">' + cardModeTexts().empty + '</div>';
     return;
   }
   listEl.innerHTML = cardModeCurrentLanes.map((l, i) => {
@@ -2844,7 +2893,7 @@ async function stopAllCardModeLanes() {
       method: 'POST', headers, body: JSON.stringify({ action: 'set', isEnabled: false })
     });
     const result = await response.json();
-    showToast(result.success ? '✅ تم إيقاف كل المسارات' : '❌ ' + result.message, result.success ? 'success' : 'error');
+    showToast(result.success ? '✅ ' + cardModeTexts().stopped : '❌ ' + result.message, result.success ? 'success' : 'error');
     refreshCardModeStatus();
   } catch (error) { showToast('❌ فشل الإيقاف', 'error'); }
 }
@@ -2870,7 +2919,7 @@ async function removeCardModeLane(index) {
 async function editCardModeLane(index) {
   const lane = cardModeCurrentLanes[index];
   if (!lane) return;
-  document.getElementById('cardModeFormTitle').textContent = '✏️ تعديل مسار' + (lane.groupName ? ' "' + lane.groupName + '"' : '');
+  document.getElementById('cardModeFormTitle').textContent = cardModeTexts().editTitle + (lane.groupName ? ' "' + lane.groupName + '"' : '');
   const isCenterAccount = sessionStorage.getItem('isCenter') === 'true';
   if (isCenterAccount && lane.instructorNameId) {
     const instructorSelect = document.getElementById('cardModeInstructorSelect');
@@ -2903,8 +2952,8 @@ async function editCardModeLane(index) {
 }
 
 function resetCardModeForm() {
-  document.getElementById('cardModeFormTitle').textContent = '➕ إضافة مسار جديد';
-  document.getElementById('cardModeSaveBtn').textContent = 'حفظ المسار';
+  document.getElementById('cardModeFormTitle').textContent = cardModeTexts().addTitle;
+  document.getElementById('cardModeSaveBtn').textContent = cardModeTexts().saveBtn;
   const instructorSelect = document.getElementById('cardModeInstructorSelect');
   if (instructorSelect) instructorSelect.value = '';
   fillCardModeGroupOptions('');
@@ -3794,6 +3843,6 @@ async function confirmReset() {
 <script src="recovery-email.js?v=4"></script>
 <script src="branding.js?v=4"></script>
 <script src="custom-dialogs.js?v=4"></script>
-<script src="attendance-decisions.js?v=2"></script>
+<script src="attendance-decisions.js?v=3"></script>
 </body>
 </html>
