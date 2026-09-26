@@ -114,7 +114,9 @@
     const dock = document.getElementById('dqDock');
     const show = queue.length > 0 && !isOpen();
     dock.style.display = show ? 'flex' : 'none';
-    dock.innerHTML = '🔔 <span>' + queue.length + ' ' + (queue.length === 1 ? 'طلب' : 'طلبات') + ' بانتظار قرارك</span>';
+    // لو فيه مودال تاني مفتوح (مثلاً وضع الكارت)، الشريط بيتصغّر لأيقونة + عدّاد عشان مايغطيش النموذج
+    dock.classList.toggle('dq-dock-compact', otherModalOpen());
+    dock.innerHTML = '🔔 <b class="dq-count">' + queue.length + '</b><span> ' + (queue.length === 1 ? 'طلب' : 'طلبات') + ' بانتظار قرارك</span>';
   }
 
   function minutesLeft(d) {
