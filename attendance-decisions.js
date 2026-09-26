@@ -9,7 +9,16 @@
 // بتعتمد على globals الصفحة: PROJECT_URL و getAuthHeaders() و showToast().
 (function () {
   if (window.__fasliDecisionQueue) return;
+  // ✅ المساعد من غير صلاحية "الحضور" السيرفر بيرفض طلبات القرارات أصلاً — مافيش داعي نعمل polling ليها
+  try {
+    if (sessionStorage.getItem('userRole') === 'assistant') {
+      const perms = JSON.parse(sessionStorage.getItem('assistantPermissions') || '{}');
+      if (perms.manage_attendance !== true) return;
+    }
+  } catch (_e) { /* لو التخزين مش متاح نكمّل عادي */ }
   window.__fasliDecisionQueue = true;
+  // المدرس المنفرد عنده وضع واحد شغّال (مش "مسارات") فبنستخدم لفظ يناسبه في النافذة
+  const SOLO = sessionStorage.getItem('isCenter') !== 'true';
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -47,9 +56,9 @@
     t.push('reject');
     return t;
   }
-  const TAB_LABEL = {
-    makeup: '🔁 تعويض حصة فاتت', early: '⏩ حضور مبكر', run: '▶ تنفيذ مسار', reject: '❌ رفض',
-  };
+  // تبويب "تنفيذ": مع مسارين اسمه اختيار المسار، ومع طالب من برّه المجموعة هو دفع/مذكرة استثنائي
+  const tabLabel = (t, d) => t === 'run' ? (d.reason === 'multi_lane' ? '▶ اختيار المسار' : '💰 دفع/مذكرة استثنائي')
+    : ({ makeup: '🔁 تعويض حصة فاتت', early: '⏩ حضور مبكر', reject: '❌ رفض' })[t];
   const laneModesText = (l) => [l.attendance ? 'حضور' : '', l.payment ? 'دفع "' + l.payment.title + '"' : '', l.book ? 'مذكرة' : '']
     .filter(Boolean).join(' + ');
 
@@ -142,10 +151,10 @@
         (d.active_instructor_name ? ' <span class="dq-muted">(المدرس: ' + esc(d.active_instructor_name) + ')</span>' : '') + '</div>' +
         '<div class="dq-warn">الطالب مش مسجّل في المجموعة دي — ماتسجّلش له أي حاجة قبل قرارك.</div>';
     } else {
-      where = '<div class="dq-warn">الطالب مش تابع لأي مسار نشط دلوقتي — ماتسجّلش له أي حاجة قبل قرارك.</div>';
+      where = '<div class="dq-warn">' + (SOLO ? 'الطالب مش تابع لمجموعة الوضع الشغّال دلوقتي' : 'الطالب مش تابع لأي مسار نشط دلوقتي') + ' — ماتسجّلش له أي حاجة قبل قرارك.</div>';
     }
     const laneList = lanes && d.reason !== 'multi_lane' && !d.active_group_name
-      ? '<div class="dq-muted">المسارات النشطة: ' + lanes.map((l) => esc(l.groupName)).join('، ') + '</div>' : '';
+      ? '<div class="dq-muted">' + (SOLO ? 'المجموعة الشغّالة: ' : 'المسارات النشطة: ') + lanes.map((l) => esc(l.groupName)).join('، ') + '</div>' : '';
     return '<div class="dq-card">' +
       '<div class="dq-student">' + esc(d.student_name || d.student_uid) + '</div>' +
       '<div class="dq-row"><span>مجموعته:</span> <b>' + esc(d.home_group_name || '—') + '</b></div>' +
@@ -173,7 +182,7 @@
     const body = document.getElementById('dqBody');
     body.innerHTML = infoCard(d) +
       '<div class="dq-tabs" role="tablist">' +
-        tabs.map((t) => '<button type="button" class="dq-tab' + (t === 'reject' ? ' dq-tab-reject' : '') + (tab === t ? ' active' : '') + '" data-tab="' + t + '">' + TAB_LABEL[t] + '</button>').join('') +
+        tabs.map((t) => '<button type="button" class="dq-tab' + (t === 'reject' ? ' dq-tab-reject' : '') + (tab === t ? ' active' : '') + '" data-tab="' + t + '">' + tabLabel(t, d) + '</button>').join('') +
       '</div>' +
       '<div id="dqPane" class="dq-pane"><div class="dq-muted">جاري التحميل...</div></div>';
     body.querySelectorAll('.dq-tab').forEach((btn) => btn.addEventListener('click', () => {
@@ -214,7 +223,7 @@
       const exceptional = d.reason !== 'multi_lane';
       pane.innerHTML =
         (exceptional
-          ? '<p class="dq-muted">الطالب خارج مجموعة المسار — هيتنفّذ له <b>الدفع/المذكرة بس</b> بقرارك الصريح (الحضور ليه مسار تعويض/حضور مبكر منفصل).</p>'
+          ? '<p class="dq-muted">الطالب خارج مجموعة ' + (SOLO ? 'الوضع الشغّال' : 'المسار') + ' — هيتنفّذ له <b>الدفع/المذكرة بس</b> بقرارك الصريح (الحضور ليه تعويض/حضور مبكر منفصل).</p>'
           : '<p class="dq-muted">اختار المسار اللي هيتنفّذ (حضور + دفع + مذكرة حسب المسار). المسار التاني مش هيتنفّذ.</p>') +
         laneRadios(d, lanes, 'dqRunLane') +
         '<button type="button" class="btn btn-primary" id="dqConfirm">' + (exceptional ? 'تنفيذ الدفع/المذكرة' : 'تنفيذ المسار المختار') + '</button>';
@@ -375,8 +384,11 @@
         if (res && res.success) applyQueue(res.data);
       }
     } catch (e) { /* الشبكة/الجلسة: نحاول في الدورة الجاية */ }
-    // أسرع طول ما القارئ شغّال (الطلبات بتظهر في ثواني)، وأبطأ كتير لما مفيش وضع مفعّل
-    pollTimer = setTimeout(poll, window.__fasliCardModeActive ? 3000 : 30000);
+    // أسرع طول ما القارئ شغّال (الطلبات بتظهر في ثواني)، وأبطأ كتير لما مفيش وضع مفعّل. لو الحالة
+    // مجهولة (مساعد معاه صلاحية الحضور من غير صلاحية وضع الكارت، فماحدش بيحدّث المؤشر ده) بنستخدم
+    // فترة وسط عشان الطلبات تظهر له في ثواني برضه
+    const active = window.__fasliCardModeActive;
+    pollTimer = setTimeout(poll, active === true ? 3000 : (active === false ? 30000 : 6000));
   }
 
   function start() {
