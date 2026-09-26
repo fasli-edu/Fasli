@@ -258,66 +258,68 @@
           حدد إيه اللي هيحصل لما أي طالب يمرّغ كارته على البورد.
         </p>
 
-        <div class="modal-section">
-          <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
-            <span style="font-weight:600;">⚡ تشغيل جهاز القارئ</span>
-            <input type="checkbox" id="cardReaderEnabledCb" onchange="onReaderEnabledChange()" style="width:20px;height:20px;">
-          </label>
-          <p style="font-size:12px;color:var(--gray-500);margin-top:6px;">
-            القارئ متوقف افتراضياً. لازم تفعّله هنا الأول قبل ما أي كارت يقدر يسجّل حضور أو أي عملية.
-          </p>
+        <div class="modal-section" id="cardModeLanesSection">
+          <div class="modal-section-title">📡 المسارات الشغّالة الآن</div>
+          <div id="cardModeLanesList" class="cm-lanes"><div class="dq-muted">مفيش مسارات شغّالة دلوقتي.</div></div>
+          <button class="btn btn-outline btn-sm" id="cardModeStopAllBtn" style="display:none;margin-top:8px;" onclick="stopAllCardModeLanes()">⏹ إيقاف كل المسارات</button>
         </div>
 
-        <div id="cardModeSettingsBody" style="display:none;">
+        <!-- ✅ تشغيل/إيقاف القارئ بقى بالمسارات (كل مسار وقته)، الـcheckbox ده مخفي وموجود بس عشان أي كود قديم بيقراه -->
+        <input type="checkbox" id="cardReaderEnabledCb" checked style="display:none;">
 
-        <div class="modal-section" id="cardModeCenterContext">
-          <div class="modal-section-title">🧑‍🏫 سياق الحصة</div>
+        <div id="cardModeSettingsBody">
+        <div class="modal-section-title" id="cardModeFormTitle" style="margin:4px 0 10px;font-size:15px;">➕ إضافة مسار جديد</div>
+
+        <div class="modal-section" id="cardModeGroupBlock">
+          <div class="modal-section-title">👥 المجموعة (إجباري لكل الأوضاع)</div>
           <p style="font-size:12px;color:var(--gray-500);margin:0 0 10px;">
-            لازم تحدد المجموعة والحصة اللي القارئ هيسجّل حضورهم دلوقتي — الحصص اللي بتظهر هنا هي بس اللي اتنشأت النهاردة.
+            المسار بيتنفّذ تلقائي على طلاب المجموعة دي. أي طالب من برّها بتظهر لك نافذة قرار (رفض / تعويض / حضور مبكر).
           </p>
           <div style="display:flex;gap:12px;flex-wrap:wrap;">
             <div class="field" id="cardModeInstructorField" style="flex:1;min-width:160px;display:none;margin-bottom:0;">
-              <label id="cardModeInstructorLabel">المدرس</label>
+              <label id="cardModeInstructorLabel">المدرس (مطلوب للحضور)</label>
               <select id="cardModeInstructorSelect" onchange="onCardModeInstructorChange()">
-                <option value="">-- اختر المدرس --</option>
+                <option value="">-- كل المدرسين --</option>
               </select>
             </div>
             <div class="field" style="flex:1;min-width:160px;margin-bottom:0;">
               <label>المجموعة</label>
-              <select id="cardModeGroupSelect" onchange="onCardModeGroupChange()" disabled>
-                <option value="">-- اختر المدرس الأول --</option>
+              <select id="cardModeGroupSelect" onchange="onCardModeGroupChange()">
+                <option value="">-- اختر المجموعة --</option>
               </select>
-            </div>
-          </div>
-          <div class="field" style="margin-top:12px;margin-bottom:0;">
-            <label>الحصة</label>
-            <select id="cardModeSessionSelect" onchange="onCardModeSessionChange()" disabled>
-              <option value="">-- اختر المجموعة الأول --</option>
-            </select>
-          </div>
-          <div id="cardModeNewSessionBox" style="display:none;margin-top:10px;">
-            <div class="field" style="margin-bottom:0;">
-              <label>اسم الحصة</label>
-              <input type="text" id="cardModeNewSessionLabel" placeholder="مثال: حصة 1، حصة مراجعة">
             </div>
           </div>
         </div>
 
         <div class="modal-section">
-          <div class="modal-section-title">⏰ هتنتهي الساعة كام؟</div>
+          <div class="modal-section-title">⏰ المسار ده هينتهي الساعة كام؟</div>
           <input type="time" id="cardModeEndTime">
           <p style="font-size:12px;color:var(--gray-500);margin-top:6px;">
-            لازم تكون بعد الوقت دلوقتي. بعدها، كل الأوضاع المفعّلة دلوقتي بتتوقف تلقائيًا (لو الحضور مفعّل، تسجيل الحضور بيتقفل على الحصة دي كمان).
+            لازم تكون بعد الوقت دلوقتي. بعدها المسار ده بس بيتوقف (باقي المسارات مش بتتأثر)، وتسجيل الحضور بيتقفل على حصته كمان.
           </p>
         </div>
 
         <div class="modal-section">
-          <div class="modal-section-title">🎯 الأوضاع المفعّلة (اختاري وضع واحد على الأقل)</div>
+          <div class="modal-section-title">🎯 الأوضاع (اختاري وضع واحد على الأقل)</div>
           <p style="font-size:11.5px;color:var(--gray-500);margin:-4px 0 8px;">لو حطيتي مبلغ أقل من السعر الأصلي في الدفع/السداد، بيتسجّل كدفعة جزئية.</p>
 
           <label class="modal-toggle-row">
             <input type="checkbox" id="cardModeAttendance" checked onchange="onCardModeTypeChange()"> ✅ تسجيل الحضور
           </label>
+          <div id="cardModeCenterContext" style="padding-inline-start:29px;margin-bottom:10px;">
+            <div class="field" style="margin-bottom:0;">
+              <label>الحصة (اللي اتنشأت النهاردة للمجموعة دي)</label>
+              <select id="cardModeSessionSelect" onchange="onCardModeSessionChange()" disabled>
+                <option value="">-- اختر المجموعة الأول --</option>
+              </select>
+            </div>
+            <div id="cardModeNewSessionBox" style="display:none;margin-top:10px;">
+              <div class="field" style="margin-bottom:0;">
+                <label>اسم الحصة</label>
+                <input type="text" id="cardModeNewSessionLabel" placeholder="مثال: حصة 1، حصة مراجعة">
+              </div>
+            </div>
+          </div>
 
           <label class="modal-toggle-row">
             <input type="checkbox" id="cardModePaymentCb" onchange="onCardModeTypeChange()"> 💰 دفع اشتراك
@@ -365,7 +367,7 @@
         </div>
 
         </div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:12px;" onclick="saveCardMode()">حفظ الوضع</button>
+        <button class="btn btn-primary" id="cardModeSaveBtn" style="width:100%;justify-content:center;margin-top:12px;" onclick="saveCardMode()">حفظ المسار</button>
       </div>
     </div>
   </div>
@@ -1927,24 +1929,22 @@ async function openCardModeModal() {
 // ============================================
 let cardModeGroupsCache = [];
 
-async function loadCardModeInstructors(isCenterAssistant) {
+async function loadCardModeInstructors(isCenter) {
   try {
     const headers = getAuthHeaders();
     if (!headers) return;
-    const groupSelect = document.getElementById('cardModeGroupSelect');
     const sessionSelect = document.getElementById('cardModeSessionSelect');
+    // ✅ مسارات: المجموعة مطلوبة لكل الأوضاع (حضور/دفع/مذكرة)، فالقايمة بتتحمّل لكل الحسابات. لحسابات
+    // السنتر، المدرس اختياري كفلتر (ومطلوب للحضور بس، والسيرفر بيتأكد إن المجموعة تابعة له)
+    const groupsRes = await fetch(PROJECT_URL + '/functions/v1/manage-group', { method: 'POST', headers, body: JSON.stringify({ action: 'listDetailed' }) });
+    const groupsResult = await groupsRes.json();
+    cardModeGroupsCache = groupsResult.success ? (groupsResult.data || []) : [];
 
-    if (isCenterAssistant) {
-      const [instructorsRes, groupsRes] = await Promise.all([
-        fetch(PROJECT_URL + '/functions/v1/manage-instructor-names', { method: 'POST', headers, body: JSON.stringify({ action: 'list' }) }),
-        fetch(PROJECT_URL + '/functions/v1/manage-group', { method: 'POST', headers, body: JSON.stringify({ action: 'listDetailed' }) }),
-      ]);
+    if (isCenter) {
+      const instructorsRes = await fetch(PROJECT_URL + '/functions/v1/manage-instructor-names', { method: 'POST', headers, body: JSON.stringify({ action: 'list' }) });
       const instructorsResult = await instructorsRes.json();
-      const groupsResult = await groupsRes.json();
-      cardModeGroupsCache = groupsResult.success ? (groupsResult.data || []) : [];
-
       const select = document.getElementById('cardModeInstructorSelect');
-      select.innerHTML = '<option value="">-- اختر المدرس --</option>';
+      select.innerHTML = '<option value="">-- كل المدرسين --</option>';
       if (instructorsResult.success) {
         (instructorsResult.data || []).filter(n => n.is_active).forEach(n => {
           const opt = document.createElement('option');
@@ -1952,48 +1952,38 @@ async function loadCardModeInstructors(isCenterAssistant) {
           select.appendChild(opt);
         });
       }
-      groupSelect.innerHTML = '<option value="">-- اختر المدرس الأول --</option>';
-      groupSelect.disabled = true;
-    } else {
-      const groupsRes = await fetch(PROJECT_URL + '/functions/v1/manage-group', { method: 'POST', headers, body: JSON.stringify({ action: 'listDetailed' }) });
-      const groupsResult = await groupsRes.json();
-      const groups = groupsResult.success ? (groupsResult.data || []) : [];
-      groupSelect.innerHTML = '<option value="">-- اختر المجموعة --</option>';
-      groups.forEach(g => {
-        const opt = document.createElement('option');
-        opt.value = g.name; opt.textContent = g.name;
-        groupSelect.appendChild(opt);
-      });
-      groupSelect.disabled = false;
     }
+    fillCardModeGroupOptions('');
     sessionSelect.innerHTML = '<option value="">-- اختر المجموعة الأول --</option>';
     sessionSelect.disabled = true;
     document.getElementById('cardModeNewSessionBox').style.display = 'none';
   } catch (error) { console.error('❌ خطأ في تحميل المدرسين/المجموعات:', error); }
 }
 
-function onCardModeInstructorChange() {
-  const instructorId = document.getElementById('cardModeInstructorSelect').value;
+// قايمة المجموعات (كلها، أو مجموعات المدرس المختار لحسابات السنتر)
+function fillCardModeGroupOptions(instructorId) {
   const groupSelect = document.getElementById('cardModeGroupSelect');
-  const sessionSelect = document.getElementById('cardModeSessionSelect');
-  sessionSelect.innerHTML = '<option value="">-- اختر المجموعة الأول --</option>';
-  sessionSelect.disabled = true;
-  document.getElementById('cardModeNewSessionBox').style.display = 'none';
-
-  if (!instructorId) {
-    groupSelect.innerHTML = '<option value="">-- اختر المدرس الأول --</option>';
-    groupSelect.disabled = true;
-    return;
-  }
-  const matchingGroups = cardModeGroupsCache.filter(g => String(g.instructorNameId) === String(instructorId));
+  const list = instructorId ? cardModeGroupsCache.filter(g => String(g.instructorNameId) === String(instructorId)) : cardModeGroupsCache;
   groupSelect.innerHTML = '<option value="">-- اختر المجموعة --</option>';
-  matchingGroups.forEach(g => {
+  list.forEach(g => {
     const opt = document.createElement('option');
     opt.value = g.name; opt.textContent = g.name;
     groupSelect.appendChild(opt);
   });
-  groupSelect.disabled = matchingGroups.length === 0;
-  if (matchingGroups.length === 0) groupSelect.innerHTML = '<option value="">-- لا توجد مجموعات مربوطة بهذا المدرس --</option>';
+  groupSelect.disabled = false;
+  if (instructorId && list.length === 0) {
+    groupSelect.innerHTML = '<option value="">-- لا توجد مجموعات مربوطة بهذا المدرس --</option>';
+    groupSelect.disabled = true;
+  }
+}
+
+function onCardModeInstructorChange() {
+  const instructorId = document.getElementById('cardModeInstructorSelect').value;
+  const sessionSelect = document.getElementById('cardModeSessionSelect');
+  sessionSelect.innerHTML = '<option value="">-- اختر المجموعة الأول --</option>';
+  sessionSelect.disabled = true;
+  document.getElementById('cardModeNewSessionBox').style.display = 'none';
+  fillCardModeGroupOptions(instructorId);
 }
 
 async function onCardModeGroupChange() {
@@ -2169,26 +2159,6 @@ function minutesFromNowToTimeInputValue(remainingSeconds) {
 }
 
 async function saveCardMode() {
-  const readerEnabled = document.getElementById('cardReaderEnabledCb').checked;
-
-  // ✅ لو المستخدم عطّل القارئ، نبعت طلب إيقاف بسيط من غير أي تحقق تاني
-  if (!readerEnabled) {
-    try {
-      const headers = getAuthHeaders();
-      if (!headers) return;
-      const response = await fetch(PROJECT_URL + '/functions/v1/card-action-mode', {
-        method: 'POST', headers, body: JSON.stringify({ action: 'set', isEnabled: false })
-      });
-      const result = await response.json();
-      showToast(result.success ? '✅ ' + result.message : '❌ ' + result.message, result.success ? 'success' : 'error');
-      if (result.success) { closeCardModeModal(); refreshCardModeStatus(); }
-    } catch (error) {
-      console.error('❌ خطأ:', error);
-      showToast('❌ فشل إيقاف القارئ', 'error');
-    }
-    return;
-  }
-
   const attendanceChecked = document.getElementById('cardModeAttendance').checked;
   const paymentChecked = document.getElementById('cardModePaymentCb').checked;
   const bookChecked = document.getElementById('cardModeBookCb').checked;
@@ -2199,14 +2169,18 @@ async function saveCardMode() {
   if (bookChecked) modes.push('book_payment');
   if (modes.length === 0) { showToast('⚠️ اختاري وضع واحد على الأقل', 'error'); return; }
 
-  // ✅ ساعة انتهاء محددة بدل مدة بالدقايق — بنحسب الفرق بالدقايق من دلوقتي لحد الساعة
-  // المختارة (بتوقيت الجهاز نفسه، زي ما هو معروض في حقل الوقت)، ولازم تكون في المستقبل
+  // ✅ المجموعة إجبارية لكل الأوضاع: المسار بيتنفّذ تلقائي على طلابها، وأي طالب من برّها بيطلّع نافذة قرار
+  const groupName = document.getElementById('cardModeGroupSelect').value;
+  if (!groupName) { showToast('⚠️ اختاري المجموعة اللي المسار ده ليها', 'error'); return; }
+
+  // ✅ ساعة انتهاء محددة (لكل مسار على حدة) — بنحسب الفرق بالدقايق من دلوقتي لحد الساعة المختارة
+  // (بتوقيت الجهاز نفسه، زي ما هو معروض في حقل الوقت)، ولازم تكون في المستقبل
   const endTimeStr = document.getElementById('cardModeEndTime').value;
-  if (!endTimeStr) { showToast('⚠️ حددي وقت انتهاء الحصة', 'error'); return; }
+  if (!endTimeStr) { showToast('⚠️ حددي وقت انتهاء المسار', 'error'); return; }
   const durationMinutes = computeMinutesUntilTime(endTimeStr);
   if (!durationMinutes || durationMinutes <= 0) { showToast('⚠️ وقت الانتهاء لازم يكون بعد الوقت الحالي', 'error'); return; }
 
-  const body = { isEnabled: true, modes, durationMinutes };
+  const body = { action: 'setLane', groupName, modes, durationMinutes };
   if (paymentChecked) {
     body.paymentTitle = document.getElementById('cardModePaymentTitle').value;
     body.paymentAmount = document.getElementById('cardModePaymentAmount').value;
@@ -2218,23 +2192,16 @@ async function saveCardMode() {
     if (!body.bookId || !body.bookAmount) { showToast('⚠️ اختر المذكرة والمبلغ', 'error'); return; }
   }
 
-  // ✅ سياق الحصة (مجموعة+حصة) مربوط بالحضور بس — لو الحضور مش مفعّل، منبعتش أي بيانات
-  // مجموعة/حصة خالص، ومنطلبهاش من المستخدم أصلاً (دفع/مذكرة بيشتغلوا بوقت الانتهاء الموحّد
-  // فوق من غير أي مجموعة/حصة)
+  // ✅ الحصة (والمدرس لحسابات السنتر) مربوطين بالحضور بس
   if (attendanceChecked) {
-    // ✅ مجموعة+حصة النهاردة مطلوبة لحسابات الحضور — المدرس مطلوب لو الحساب اللي تابعله المساعد سنتر
-    const isCenterAssistant = sessionStorage.getItem('isCenter') === 'true';
-    if (isCenterAssistant) {
+    const isCenterAccount = sessionStorage.getItem('isCenter') === 'true';
+    if (isCenterAccount) {
       const instructorId = document.getElementById('cardModeInstructorSelect').value;
       if (!instructorId) { showToast('⚠️ حدد المدرس قبل تفعيل الحضور', 'error'); return; }
       body.instructorNameId = Number(instructorId);
     }
-    const groupName = document.getElementById('cardModeGroupSelect').value;
     const sessionValue = document.getElementById('cardModeSessionSelect').value;
-    if (!groupName || !sessionValue) {
-      showToast('⚠️ حدد المجموعة والحصة قبل تفعيل الحضور', 'error'); return;
-    }
-    body.groupName = groupName;
+    if (!sessionValue) { showToast('⚠️ حدد الحصة قبل تفعيل الحضور', 'error'); return; }
     if (sessionValue === '__new__') {
       const newSessionLabel = document.getElementById('cardModeNewSessionLabel').value.trim();
       if (!newSessionLabel) { showToast('⚠️ حدد اسم الحصة الجديدة', 'error'); return; }
@@ -2248,26 +2215,23 @@ async function saveCardMode() {
     const headers = getAuthHeaders();
     if (!headers) return;
     const response = await fetch(PROJECT_URL + '/functions/v1/card-action-mode', {
-      method: 'POST', headers, body: JSON.stringify({ ...body, action: 'set' })
+      method: 'POST', headers, body: JSON.stringify(body)
     });
     const result = await response.json();
     showToast(result.success ? '✅ ' + result.message : '❌ ' + result.message, result.success ? 'success' : 'error');
     if (result.success) {
-      closeCardModeModal();
-      refreshCardModeStatus();
+      // المودال بيفضل مفتوح عشان تقدر تضيف مسار تاني، والمسار الجديد بيظهر فوق في القايمة
+      resetCardModeForm();
+      await refreshCardModeStatus();
+      document.getElementById('cardModeLanesSection')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   } catch (error) {
     console.error('❌ خطأ:', error);
-    showToast('❌ فشل حفظ الوضع', 'error');
+    showToast('❌ فشل حفظ المسار', 'error');
   }
 }
 
 async function refreshCardModeStatus() {
-  const cardEl = document.getElementById('cardModeCard');
-  if (cardEl && cardEl.style.display === 'none') return;
-  // ✅ (طلب) نفس إصلاح dashboard.html — منسيبش التحديث الدوري يلمس حقول المودال وهو مفتوح
-  // ومعدّل عليه المستخدم، عشان ميرجعش يعرض القيمة القديمة المحفوظة كأن المودال "اتقفل" لوحده
-  if (document.getElementById('cardModeModal')?.classList.contains('open')) return;
   try {
     const headers = getAuthHeaders();
     if (!headers) return;
@@ -2279,19 +2243,14 @@ async function refreshCardModeStatus() {
     if (!result.success) return;
     window.__fasliCardModeActive = !!result.isEnabled; // ✅ نافذة قرارات الحضور بتسرّع فحص الطلبات طول ما القارئ شغّال
 
-    // ✅ نعبّي حقول المودال بالحالة الحالية، عشان لما المساعد يفتحه يلاقي إعدادات المدرس زي ما هي.
-    // ✅ (طلب متابعة) استخدمنا isEnabled (مش readerEnabled) هنا عشان الـ checkbox وصندوق
-    // الإعدادات يعكسوا هل فيه وضع (حضور/دفع/مذكرة) محدد فعلياً — readerEnabled بقى دايماً
-    // true تقريباً (القارئ فاتح قراية حتى بدون وضع محدد، عشان تسريع تسجيل الكروت)
-    const enabledCb = document.getElementById('cardReaderEnabledCb');
-    if (enabledCb) {
-      enabledCb.checked = !!result.isEnabled;
-      document.getElementById('cardModeSettingsBody').style.display = result.isEnabled ? 'block' : 'none';
-    }
+    // ✅ قايمة المسارات جوه المودال بتتحدّث دايماً (حتى وهو مفتوح) — أما حقول النموذج نفسها
+    // (إضافة/تعديل مسار) فمابنلمسهاش خالص عشان التحديث الدوري ماقطعش على المستخدم وهو بيكتب
+    renderCardModeLanes(result);
 
+    // ✅ (طلب متابعة) القارئ ممكن يشتغل من غير أي وضع (حضور/دفع/مذكرة) مفعّل — إما لأن فيه
+    // طلب مسح كارت معلّق (تسجيل طالب جديد أو ربط كارت بطالب موجود)، أو لأنه ببساطة مفيش
+    // وضع محدد دلوقتي (القارئ فاضل شغّال قراية عشان تسريع التسجيل، بس من غير أي معالجة)
     if (!descEl) return;
-    // ✅ (طلب متابعة) القارئ ممكن يشتغل من غير أي وضع مفعّل — إما طلب مسح كارت معلّق، أو
-    // ببساطة مفيش وضع محدد دلوقتي (فاضل شغّال قراية عشان تسريع التسجيل من غير معالجة)
     if (result.pendingRegistration) {
       descEl.textContent = '🪪 القارئ شغّال مؤقتاً لمسح كارت (تسجيل/ربط طالب)';
       descEl.style.color = 'var(--info)';
@@ -2302,42 +2261,11 @@ async function refreshCardModeStatus() {
       descEl.style.color = 'var(--gray-400)';
       return;
     }
-
-    const modes = result.modes || ['attendance'];
-    const labels = [];
-    if (modes.includes('attendance')) labels.push('حضور');
-    if (modes.includes('payment')) labels.push(`دفع "${result.paymentTitle}"`);
-    if (modes.includes('book_payment')) labels.push('سداد مذكرة');
-    const isOnlyAttendance = modes.length === 1 && modes[0] === 'attendance';
-    let statusText = isOnlyAttendance ? 'حضور (الوضع الحالي)' : labels.join(' + ') + ' (شغّال)';
-    if (result.activeGroupName && result.activeSessionLabel) {
-      statusText += ` — ${escapeHtml(result.activeGroupName)} / ${escapeHtml(result.activeSessionLabel)}`;
-    }
-    descEl.textContent = statusText;
-    descEl.style.color = isOnlyAttendance ? '' : 'var(--warning)';
-
-    if (result.activeGroupName) {
-      await restoreCardModeContextSelection(result.activeInstructorNameId, result.activeGroupName, result.activeSessionId);
-    }
-
-    // ✅ (فِكس، نفس فِكس dashboard.html) استعادة الحضور/دفع/مذكرة ووقت الانتهاء — كانوا
-    // بيرجعوا فاضيين دايمًا لما المودال يتفتح تاني حتى لو الوضع ده شغّال فعلاً
-    document.getElementById('cardModeAttendance').checked = modes.includes('attendance');
-    if (result.remainingSeconds != null) {
-      const endTimeInput = document.getElementById('cardModeEndTime');
-      if (endTimeInput) endTimeInput.value = minutesFromNowToTimeInputValue(result.remainingSeconds);
-    }
-    document.getElementById('cardModePaymentCb').checked = modes.includes('payment');
-    document.getElementById('cardModeBookCb').checked = modes.includes('book_payment');
-    onCardModeTypeChange();
-    if (modes.includes('payment')) {
-      document.getElementById('cardModePaymentTitle').value = result.paymentTitle || '';
-      document.getElementById('cardModePaymentAmount').value = result.paymentAmount ?? '';
-    }
-    if (modes.includes('book_payment')) {
-      document.getElementById('cardModeBookSelect').value = result.bookId || '';
-      document.getElementById('cardModeBookAmount').value = result.bookAmount ?? '';
-    }
+    const lanes = cardModeLaneList(result);
+    descEl.textContent = lanes.length === 1
+      ? cardModeLaneTitle(lanes[0]) + ' — ' + cardModeLaneModes(lanes[0]) + ' (شغّال)'
+      : lanes.length + ' مسارات شغّالة: ' + lanes.map(l => cardModeLaneTitle(l)).join('، ');
+    descEl.style.color = 'var(--warning)';
   } catch (error) { /* تجاهل */ }
 }
 
@@ -2362,6 +2290,149 @@ async function restoreCardModeContextSelection(instructorNameId, groupName, sess
     sessionSelect.value = String(sessionId);
   } catch (_e) { /* استعادة السياق اختيارية */ }
 }
+
+// ============================================
+// ✅ مسارات وضع الكارت: قايمة المسارات الشغّالة + تعديل/إيقاف كل مسار
+// ============================================
+let cardModeCurrentLanes = [];
+
+// المسارات الفعلية من رد get. لو مفيش مسارات بس الوضع القديم (مجموعة واحدة) شغّال، بنعرضه كمسار واحد
+function cardModeLaneList(result) {
+  if (Array.isArray(result.lanes) && result.lanes.length) return result.lanes;
+  if (!result.isEnabled) return [];
+  const modes = result.modes || [];
+  return [{
+    legacy: true, groupName: result.activeGroupName || null, attendance: modes.includes('attendance'),
+    sessionId: result.activeSessionId || null, sessionLabel: result.activeSessionLabel || null,
+    instructorNameId: result.activeInstructorNameId || null,
+    payment: modes.includes('payment') ? { title: result.paymentTitle, amount: result.paymentAmount } : null,
+    book: modes.includes('book_payment') ? { id: result.bookId, amount: result.bookAmount } : null,
+    remainingSeconds: result.remainingSeconds ?? 0,
+  }];
+}
+const cardModeLaneTitle = (l) => l.groupName ? l.groupName : 'كل الطلاب';
+function cardModeLaneModes(l) {
+  const parts = [];
+  if (l.attendance) parts.push('حضور' + (l.sessionLabel ? ' (' + l.sessionLabel + ')' : ''));
+  if (l.payment) parts.push('دفع "' + l.payment.title + '"');
+  if (l.book) parts.push('سداد مذكرة');
+  return parts.join(' + ');
+}
+
+function renderCardModeLanes(result) {
+  const listEl = document.getElementById('cardModeLanesList');
+  if (!listEl) return;
+  cardModeCurrentLanes = cardModeLaneList(result);
+  const stopAll = document.getElementById('cardModeStopAllBtn');
+  if (stopAll) stopAll.style.display = cardModeCurrentLanes.length ? '' : 'none';
+  if (!cardModeCurrentLanes.length) {
+    listEl.innerHTML = '<div class="dq-muted">مفيش مسارات شغّالة دلوقتي.</div>';
+    return;
+  }
+  listEl.innerHTML = cardModeCurrentLanes.map((l, i) => {
+    const mins = Math.max(1, Math.ceil((l.remainingSeconds || 0) / 60));
+    return '<div class="cm-lane">' +
+      '<div class="cm-lane-main">' +
+        '<div class="cm-lane-title">' + escapeHtml(cardModeLaneTitle(l)) + '</div>' +
+        '<div class="cm-lane-modes">' + escapeHtml(cardModeLaneModes(l)) + '</div>' +
+        '<div class="cm-lane-time">⏳ متبقي حوالي ' + mins + ' د</div>' +
+      '</div>' +
+      '<div class="cm-lane-actions">' +
+        '<button type="button" class="btn btn-outline btn-sm" onclick="editCardModeLane(' + i + ')">تعديل</button>' +
+        '<button type="button" class="btn btn-sm cm-lane-stop" onclick="removeCardModeLane(' + i + ')">إيقاف</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function stopAllCardModeLanes() {
+  try {
+    const headers = getAuthHeaders();
+    if (!headers) return;
+    const response = await fetch(PROJECT_URL + '/functions/v1/card-action-mode', {
+      method: 'POST', headers, body: JSON.stringify({ action: 'set', isEnabled: false })
+    });
+    const result = await response.json();
+    showToast(result.success ? '✅ تم إيقاف كل المسارات' : '❌ ' + result.message, result.success ? 'success' : 'error');
+    refreshCardModeStatus();
+  } catch (error) { showToast('❌ فشل الإيقاف', 'error'); }
+}
+
+async function removeCardModeLane(index) {
+  const lane = cardModeCurrentLanes[index];
+  if (!lane) return;
+  // مسار الوضع القديم (مفيش مجموعة) بيتوقف بإيقاف الكل
+  if (lane.legacy) return stopAllCardModeLanes();
+  try {
+    const headers = getAuthHeaders();
+    if (!headers) return;
+    const response = await fetch(PROJECT_URL + '/functions/v1/card-action-mode', {
+      method: 'POST', headers, body: JSON.stringify({ action: 'removeLane', groupName: lane.groupName })
+    });
+    const result = await response.json();
+    showToast(result.success ? '✅ ' + result.message : '❌ ' + result.message, result.success ? 'success' : 'error');
+    refreshCardModeStatus();
+  } catch (error) { showToast('❌ فشل الإيقاف', 'error'); }
+}
+
+// بيملا النموذج ببيانات مسار شغّال، عشان تعدّله من غير ما تعيد الاختيارات من الأول
+async function editCardModeLane(index) {
+  const lane = cardModeCurrentLanes[index];
+  if (!lane) return;
+  document.getElementById('cardModeFormTitle').textContent = '✏️ تعديل مسار' + (lane.groupName ? ' "' + lane.groupName + '"' : '');
+  const isCenterAccount = sessionStorage.getItem('isCenter') === 'true';
+  if (isCenterAccount && lane.instructorNameId) {
+    const instructorSelect = document.getElementById('cardModeInstructorSelect');
+    instructorSelect.value = String(lane.instructorNameId);
+    onCardModeInstructorChange();
+  }
+  const groupSelect = document.getElementById('cardModeGroupSelect');
+  if (lane.groupName) {
+    groupSelect.value = lane.groupName;
+    if (groupSelect.value === lane.groupName) {
+      await onCardModeGroupChange();
+      if (lane.attendance && lane.sessionId) document.getElementById('cardModeSessionSelect').value = String(lane.sessionId);
+    }
+  }
+  document.getElementById('cardModeAttendance').checked = !!lane.attendance;
+  document.getElementById('cardModePaymentCb').checked = !!lane.payment;
+  document.getElementById('cardModeBookCb').checked = !!lane.book;
+  onCardModeTypeChange();
+  if (lane.payment) {
+    document.getElementById('cardModePaymentTitle').value = lane.payment.title || '';
+    document.getElementById('cardModePaymentAmount').value = lane.payment.amount ?? '';
+  }
+  if (lane.book) {
+    document.getElementById('cardModeBookSelect').value = lane.book.id || '';
+    document.getElementById('cardModeBookAmount').value = lane.book.amount ?? '';
+  }
+  document.getElementById('cardModeEndTime').value = minutesFromNowToTimeInputValue(lane.remainingSeconds || 0);
+  document.getElementById('cardModeSaveBtn').textContent = 'حفظ التعديل';
+  document.getElementById('cardModeFormTitle').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function resetCardModeForm() {
+  document.getElementById('cardModeFormTitle').textContent = '➕ إضافة مسار جديد';
+  document.getElementById('cardModeSaveBtn').textContent = 'حفظ المسار';
+  const instructorSelect = document.getElementById('cardModeInstructorSelect');
+  if (instructorSelect) instructorSelect.value = '';
+  fillCardModeGroupOptions('');
+  const sessionSelect = document.getElementById('cardModeSessionSelect');
+  sessionSelect.innerHTML = '<option value="">-- اختر المجموعة الأول --</option>';
+  sessionSelect.disabled = true;
+  document.getElementById('cardModeNewSessionBox').style.display = 'none';
+  document.getElementById('cardModeNewSessionLabel').value = '';
+  document.getElementById('cardModeAttendance').checked = true;
+  document.getElementById('cardModePaymentCb').checked = false;
+  document.getElementById('cardModeBookCb').checked = false;
+  document.getElementById('cardModePaymentTitle').value = '';
+  document.getElementById('cardModePaymentAmount').value = '';
+  document.getElementById('cardModeBookSelect').value = '';
+  document.getElementById('cardModeBookAmount').value = '';
+  document.getElementById('cardModeEndTime').value = '';
+  onCardModeTypeChange();
+}
+
 
 function openAttendanceModal() {
       if (!canManageAttendance) {

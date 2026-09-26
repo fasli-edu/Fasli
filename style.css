@@ -2187,3 +2187,20 @@ html body .report-preview .report-row-alert td { background: #fef2f2 !important;
 .dq-pane { display: flex; flex-direction: column; gap: 8px; }
 .dq-label { color: var(--gray-900); font-size: 13px; font-weight: 700; }
 .dq-input { color: var(--gray-900); width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--gray-200, #e5e7eb); font: inherit; background: var(--white, #fff); color: inherit; }
+.dq-warn-soft { background: var(--primary-light); color: var(--gray-900); }
+.dq-lanes { display: flex; flex-direction: column; gap: 8px; }
+.dq-lane { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--gray-200, #e5e7eb); cursor: pointer; color: var(--gray-900); font-size: 13.5px; }
+.dq-lane:has(input:checked) { border-color: var(--primary); background: var(--primary-light); }
+.dq-lane input { margin-top: 3px; flex-shrink: 0; }
+.dq-link { align-self: flex-start; border: 0; background: transparent; color: var(--primary-dark); cursor: pointer; font-weight: 700; font-size: 12.5px; padding: 0; text-decoration: underline; }
+
+/* ✅ قايمة مسارات وضع الكارت (مودال "وضع الكارت") */
+.cm-lanes { display: flex; flex-direction: column; gap: 8px; }
+.cm-lane { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px;
+  border: 1.5px solid var(--primary); background: var(--primary-light); color: var(--gray-900); }
+.cm-lane-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 200px; }
+.cm-lane-title { font-weight: 800; font-size: 14.5px; }
+.cm-lane-modes { font-size: 12.5px; }
+.cm-lane-time { font-size: 12px; color: var(--gray-500); }
+.cm-lane-actions { display: flex; gap: 6px; }
+.cm-lane-stop { background: var(--danger); color: #fff; border: 0; }

@@ -2052,12 +2052,21 @@ async function markAllRead() {
       const logoUrl = sessionStorage.getItem('brandLogoUrl') || 'assets/logo-icon.svg';
       const centerName = teacherName || 'فَصلي';
       const dateStr = new Date(session.session_date).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
-      const presentCount = roster.filter(r => r.present).length;
+      // ✅ ضيوف (طلاب من مجموعات تانية حضروا الحصة دي كتعويض/مبكر) بيظهروا بعلامة واضحة ومش بيتحسبوا
+      // في "إجمالي طلاب المجموعة" — بس بيتحسبوا كحضور فعلي في الحصة دي
+      const guests = roster.filter(r => r.isGuest);
+      const members = roster.filter(r => !r.isGuest);
+      const presentCount = members.filter(r => r.present).length;
+      const statusCell = (r) => {
+        if (r.isGuest) return `✅ ضيف — ${r.guestType === 'early' ? 'حضور مبكر' : 'تعويض'} (من ${escapeHtml(r.guestOfGroup || '')})`;
+        if (r.present && r.isMakeup) return `✅ حاضر — ${r.makeupType === 'early' ? 'حضور مبكر' : 'تعويض'} (مع ${escapeHtml(r.attendedViaGroup || 'مجموعة أخرى')})`;
+        return r.present ? '✅ حاضر' : '❌ غائب';
+      };
       const rowsHtml = roster.map((r, i) => `
         <tr>
           <td class="center">${i + 1}</td>
           <td>${escapeHtml(r.name)}</td>
-          <td class="center">${r.present ? '✅ حاضر' : '❌ غائب'}</td>
+          <td class="center">${statusCell(r)}</td>
           <td class="center">${escapeHtml(r.time || '—')}</td>
         </tr>
       `).join('');
@@ -2074,7 +2083,7 @@ async function markAllRead() {
             📅 ${escapeHtml(dateStr)}${session.instructor_name ? ' — 👤 ' + escapeHtml(session.instructor_name) : ''}
           </p>
           <p style="margin:4px 0 10px;font-size:14px;color:var(--gray-700);">
-            👥 إجمالي الطلاب: ${roster.length} — ✅ حاضر: ${presentCount} — ❌ غائب: ${roster.length - presentCount}
+            👥 إجمالي الطلاب: ${members.length} — ✅ حاضر: ${presentCount} — ❌ غائب: ${members.length - presentCount}${guests.length ? ` — 🧑‍🎓 ضيوف: ${guests.length}` : ''}
           </p>
           <div class="roster-table-wrap">
             <table>
