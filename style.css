@@ -2203,9 +2203,20 @@ html body .report-preview .report-row-alert td { background: #fef2f2 !important;
 .cm-lane-modes { font-size: 12.5px; }
 .cm-lane-time { font-size: 12px; color: var(--gray-500); }
 .cm-lane-actions { display: flex; gap: 6px; }
-.cm-lane-stop { background: var(--danger); color: #fff; border: 0; }
+.cm-lane-stop { background: #C62F35; color: #fff; border: 0; }
 /* شريط طلبات القرار على الموبايل: البانر السفلي (الدخول السريع) بيبقى أطول هناك (~125px) فبنرفعه فوقه */
 @media (max-width: 600px) { .dq-dock { bottom: 140px; } }
 .dq-dock-compact span { display: none; }
 .dq-dock-compact { padding: 9px 14px; }
 .dq-count { font-size: 15px; }
+
+/* ✅ مراجعة وضوح الألوان (مودال وضع الكارت + نافذة القرارات) في الوضعين الفاتح والداكن — كل نص >= 4.5:1.
+   .btn-outline الافتراضي نصه رمادي فاتح (مضبوط للوضع الداكن) فكان بيضيع على الخلفيات الفاتحة */
+#cardModeModal .btn-outline { color: var(--gray-900); border-color: var(--gray-300, var(--gray-200)); }
+#cardModeModal .modal-close { color: var(--gray-700); }
+.cm-lane-time, .dq-muted { color: var(--gray-600); }
+/* التحذير والرفض: النص الأحمر الفاتح كان 3.5–3.8:1 على خلفيته — بقى النص بلون النص الأساسي (بيقلب مع الثيم)
+   والتنبيه بيتوصّل بحدّ أحمر، وزر الرفض بأحمر أغمق */
+.dq-warn { color: var(--gray-900); border: 1px solid var(--danger); }
+.dq-tab-reject.active { color: var(--gray-900); border-color: var(--danger); }
+#dqModal .btn-danger { background: #C62F35; color: #fff; border-color: #C62F35; }
