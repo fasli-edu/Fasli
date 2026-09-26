@@ -2162,7 +2162,7 @@ html body .report-preview .report-row-alert td { background: #fef2f2 !important;
 
 /* ✅ نافذة "قرارات الحضور" (attendance-decisions.js) — طابور طلبات طلاب مش تابعين لمجموعة الحصة
    الشغّالة. الشريط السفلي بيفضل ظاهر لما النافذة تتصغّر عشان الطلبات ماتتنساش وقت الزحمة */
-#dqModal { z-index: 100003; } /* فوق .sidebar (100001) وإلا السايدبار بيقصّ النافذة */
+#dqModal, #cardModeModal { z-index: 100003; } /* فوق .sidebar (100001) وإلا السايدبار بيقصّ النافذة */
 .dq-dock { position: fixed; bottom: 76px; left: 18px; z-index: 100003; display: none; align-items: center; gap: 8px;
   padding: 11px 18px; border: 0; border-radius: 999px; background: var(--primary); color: var(--primary-contrast);
   font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.28); animation: dqPulse 1.6s ease-in-out infinite; }
